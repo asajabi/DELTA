@@ -104,12 +104,14 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
+# DELTA/settings.py
+
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+# CHANGE FROM 'UTC' TO:
+TIME_ZONE = 'Asia/Riyadh' 
 
 USE_I18N = True
-
 USE_TZ = True
 
 

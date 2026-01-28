@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Order History</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
+</head>
+<body class="bg-light p-4">
+<div class="container">
+    <div class="d-flex justify-content-between mb-4">
+        <h2>🧾 Order History</h2>
+        <a href="{% url 'part_search' %}" class="btn btn-secondary">← Back to Dashboard</a>
+    </div>
+
+    <div class="card shadow">
+        <div class="card-body">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Order ID</th>
+                        <th>Date</th>
+                        <th>Seller</th>
+                        <th>Total</th>
+                        <th>Items</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for order in orders %}
+                    <tr>
+                        <td><strong>{{ order.order_id }}</strong></td>
+                        <td>{{ order.created_at|date:"M d, H:i" }}</td>
+                        <td>{{ order.seller.username }}</td>
+                        <td>SAR {{ order.grand_total }}</td>
+                        <td>{{ order.items.count }} items</td>
+                        <td>
+                            <a href="{% url 'receipt_view' order.order_id %}" class="btn btn-sm btn-primary">
+                                📄 View Receipt
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+</body>
+</html>

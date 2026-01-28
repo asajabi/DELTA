@@ -9,6 +9,37 @@
   </head>
   <body class="bg-light">
     <div class="container mt-5">
+      <div class="d-flex justify-content-end mb-3 gap-2">
+        <a
+          href="{% url 'cart_view' %}"
+          class="btn btn-primary position-relative"
+        >
+          🛒 View Cart
+          <span
+            id="cart-badge"
+            class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
+          >
+            {{ cart_total_count }}
+          </span>
+        </a>
+
+        <a href="{% url 'order_list' %}" class="btn btn-info text-white">
+          🧾 Past Receipts
+        </a>
+
+        <a href="{% url 'low_stock_list' %}" class="btn btn-warning">
+          ⚠️ Low Stock
+        </a>
+
+        <a href="{% url 'scanner_view' %}" class="btn btn-secondary">
+          📷 Open Scanner
+        </a>
+
+        <a href="{% url 'sales_history' %}" class="btn btn-success">
+          💰 View Daily Sales
+        </a>
+      </div>
+
       <div class="card shadow">
         <div class="card-header bg-primary text-white">
           <h3>🚗 Part Finder</h3>
@@ -37,7 +68,7 @@
         <h4>Parts that fit:</h4>
         <div class="list-group">
           {% for part in results %}
-          <a href="#" class="list-group-item list-group-item-action">
+          <div class="list-group-item list-group-item-action">
             <div class="d-flex w-100 justify-content-between">
               <h5 class="mb-1">{{ part.name }}</h5>
               <small class="text-muted">{{ part.part_number }}</small>
@@ -55,20 +86,35 @@
                 >
                   <span>
                     {{ stock.branch.name }}
-                    <span class="badge bg-primary rounded-pill"
-                      >{{ stock.quantity }}</span
+                    <span
+                      class="badge rounded-pill {% if stock.quantity <= 3 %}bg-danger{% else %}bg-primary{% endif %}"
                     >
+                      {{ stock.quantity }}
+                    </span>
                   </span>
 
                   {% if stock.quantity > 0 %}
                   <form
-                    action="{% url 'sell_part' stock.id %}"
-                    method="POST"
-                    style="display: inline"
+                    class="d-flex align-items-center gap-2 add-to-cart-form"
+                    data-stock-id="{{ stock.id }}"
                   >
                     {% csrf_token %}
-                    <button type="submit" class="btn btn-sm btn-success">
-                      Sell 1
+
+                    <input
+                      type="number"
+                      name="quantity"
+                      class="form-control form-control-sm"
+                      value="1"
+                      min="1"
+                      max="{{ stock.quantity }}"
+                      style="width: 70px"
+                    />
+
+                    <button
+                      type="submit"
+                      class="btn btn-sm btn-outline-primary text-nowrap"
+                    >
+                      🛒 Add
                     </button>
                   </form>
                   {% else %}
@@ -82,11 +128,71 @@
                 {% endfor %}
               </ul>
             </div>
-          </a>
+          </div>
           {% endfor %}
         </div>
       </div>
       {% endif %}
     </div>
+
+    <script>
+      document.querySelectorAll(".add-to-cart-form").forEach((form) => {
+        form.addEventListener("submit", function (e) {
+          e.preventDefault(); // STOP THE PAGE REFRESH
+
+          const stockId = this.dataset.stockId;
+          const quantity = this.querySelector('input[name="quantity"]').value;
+          const csrfToken = this.querySelector(
+            'input[name="csrfmiddlewaretoken"]',
+          ).value;
+          const btn = this.querySelector("button");
+
+          // Visual Feedback: Change button text temporarily
+          const originalText = btn.innerHTML;
+          btn.innerHTML = "⏳...";
+          btn.disabled = true;
+
+          // Send to Server
+          fetch(`/inventory/add-to-cart/${stockId}/`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+              "X-CSRFToken": csrfToken,
+            },
+            body: `quantity=${quantity}`,
+          })
+            .then((response) => response.json())
+            .then((data) => {
+              if (data.success) {
+                // Success! Update Cart Badge
+                document.getElementById("cart-badge").innerText =
+                  data.total_items;
+
+                // Visual Success Indicator
+                btn.innerHTML = "✅ Added";
+                btn.classList.remove("btn-outline-primary");
+                btn.classList.add("btn-success");
+
+                // Reset button after 1 second
+                setTimeout(() => {
+                  btn.innerHTML = originalText;
+                  btn.disabled = false;
+                  btn.classList.remove("btn-success");
+                  btn.classList.add("btn-outline-primary");
+                }, 1000);
+              } else {
+                alert(data.message); // Show error (e.g., Not enough stock)
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+              }
+            })
+            .catch((error) => {
+              console.error("Error:", error);
+              btn.innerHTML = originalText;
+              btn.disabled = false;
+            });
+        });
+      });
+    </script>
   </body>
 </html>

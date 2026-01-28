@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Low Stock Alert - DELTA</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
+</head>
+<body class="bg-light p-4">
+
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="text-danger">⚠️ Low Stock Report</h1>
+        <a href="{% url 'part_search' %}" class="btn btn-secondary">← Back to Dashboard</a>
+    </div>
+
+    <div class="card shadow">
+        <div class="card-body">
+            {% if low_stock_items %}
+                <table class="table table-striped">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Quantity</th>
+                            <th>Part Name</th>
+                            <th>Part Number</th>
+                            <th>Branch</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for stock in low_stock_items %}
+                        <tr>
+                            <td>
+                                <span class="badge {% if stock.quantity == 0 %}bg-danger{% else %}bg-warning text-dark{% endif %} fs-6">
+                                    {{ stock.quantity }}
+                                </span>
+                            </td>
+                            <td>{{ stock.part.name }}</td>
+                            <td>{{ stock.part.part_number }}</td>
+                            <td>{{ stock.branch.name }}</td>
+                            <td>
+                                <a href="#" class="btn btn-sm btn-outline-primary">📞 Call Supplier</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <div class="text-center py-5">
+                    <h3 class="text-success">✅ All Stock Levels Are Good!</h3>
+                    <p>Nothing needs re-ordering right now.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

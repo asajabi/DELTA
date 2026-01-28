@@ -1,0 +1,245 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Checkout - DELTA POS</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <script>
+      function updateTotals() {
+        let subtotal = parseFloat(
+          document.getElementById("subtotal-display").dataset.value,
+        );
+        let discount =
+          parseFloat(document.getElementById("discount-input").value) || 0;
+
+        // 1. Calculate Discounted Base
+        let afterDiscount = subtotal - discount;
+        if (afterDiscount < 0) afterDiscount = 0;
+
+        // 2. Calculate VAT (15%)
+        let vat = afterDiscount * 0.15;
+
+        // 3. Grand Total
+        let total = afterDiscount + vat;
+
+        // 4. Update UI
+        document.getElementById("vat-display").innerText = vat.toFixed(2);
+        document.getElementById("total-display").innerText = total.toFixed(2);
+
+        // 5. Update Hidden Inputs for Server
+        document.getElementById("input-vat").value = vat.toFixed(2);
+        document.getElementById("input-total").value = total.toFixed(2);
+
+        // 6. PROFIT CALCULATION (Live!)
+        let originalProfit = parseFloat(
+          document.getElementById("profit-display").dataset.original,
+        );
+        let newProfit = originalProfit - discount; // Discount eats directly into profit
+        let profitEl = document.getElementById("profit-display");
+        profitEl.innerText = newProfit.toFixed(2);
+
+        if (newProfit < 0) {
+          profitEl.classList.remove("text-success");
+          profitEl.classList.add("text-danger");
+        }
+      }
+    </script>
+  </head>
+  <body class="bg-light p-4">
+    <div class="container">
+      <div class="row">
+        <div class="col-md-8">
+          <div class="card shadow mb-4">
+            <div class="card-header bg-primary text-white">
+              <h3>🛒 Current Order</h3>
+            </div>
+            <div class="card-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Item</th>
+                    <th>Qty</th>
+                    <th>Unit Price</th>
+                    <th>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for item in cart_items %}
+                  <tr>
+                    <td>
+                      {{ item.stock.part.name }}<br /><small class="text-muted"
+                        >{{ item.stock.part.part_number }}</small
+                      >
+                    </td>
+                    <td style="width: 200px">
+                      <form
+                        action="{% url 'update_cart_item' item.stock.id %}"
+                        method="POST"
+                        class="d-flex gap-2 align-items-center"
+                      >
+                        {% csrf_token %}
+
+                        <input
+                          type="number"
+                          name="quantity"
+                          value="{{ item.quantity }}"
+                          min="0"
+                          class="form-control form-control-sm"
+                          style="width: 70px"
+                        />
+
+                        <button
+                          type="submit"
+                          class="btn btn-sm btn-outline-primary"
+                          title="Update Quantity"
+                        >
+                          🔄
+                        </button>
+
+                        <button
+                          type="submit"
+                          name="quantity"
+                          value="0"
+                          class="btn btn-sm btn-outline-danger"
+                          title="Remove Item"
+                        >
+                          🗑️
+                        </button>
+                      </form>
+                    </td>
+                    <td>{{ item.unit_price }}</td>
+                    <td>{{ item.total_price }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+              <a href="{% url 'part_search' %}" class="btn btn-secondary"
+                >← Add More Items</a
+              >
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-4">
+          <form action="{% url 'finalize_order' %}" method="POST">
+            {% csrf_token %}
+            <div class="card shadow">
+              <div class="card-header bg-dark text-white">Payment Details</div>
+              <div class="card-body">
+                <div class="d-flex justify-content-between mb-2">
+                  <span>Subtotal:</span>
+                  <span
+                    id="subtotal-display"
+                    data-value="{{ subtotal }}"
+                    class="fw-bold"
+                    >{{ subtotal }}</span
+                  >
+                  <input
+                    type="hidden"
+                    name="subtotal_input"
+                    value="{{ subtotal }}"
+                  />
+                </div>
+
+                <div class="mb-3">
+                  <label class="form-label">Discount (SAR)</label>
+                  <input
+                    type="number"
+                    name="discount"
+                    id="discount-input"
+                    class="form-control"
+                    placeholder="0.00"
+                    oninput="updateTotals()"
+                  />
+                </div>
+
+                <div class="d-flex justify-content-between mb-2 text-muted">
+                  <span>VAT (15%):</span>
+                  <span id="vat-display">0.00</span>
+                  <input type="hidden" name="vat_amount" id="input-vat" />
+                </div>
+
+                <hr />
+
+                <div class="d-flex justify-content-between mb-4">
+                  <span class="h4">Total:</span>
+                  <span class="h4 text-primary"
+                    >SAR <span id="total-display">{{ subtotal }}</span></span
+                  >
+                  <input type="hidden" name="grand_total" id="input-total" />
+                </div>
+
+                <div class="alert alert-info py-2">
+                  <small>Estimated Profit:</small>
+                  <strong
+                    id="profit-display"
+                    data-original="{{ estimated_profit }}"
+                    class="text-success"
+                    >{{ estimated_profit }}</strong
+                  >
+                </div>
+
+                <hr />
+                <div class="mb-3">
+                  <h5>👤 Customer Details (CRM)</h5>
+
+                  <div class="row g-2">
+                    <div class="col-md-6">
+                      <label class="form-label">Phone Number *</label>
+                      <input
+                        type="text"
+                        name="phone_number"
+                        class="form-control"
+                        placeholder="050..."
+                        required
+                      />
+                    </div>
+                    <div class="col-md-6">
+                      <label class="form-label">Customer Name</label>
+                      <input
+                        type="text"
+                        name="customer_name"
+                        class="form-control"
+                        placeholder="e.g. Abu Ahmed"
+                      />
+                    </div>
+                    <div class="col-12 mt-2">
+                      <label class="form-label">Car Model</label>
+                      <input
+                        type="text"
+                        name="customer_car"
+                        class="form-control"
+                        placeholder="e.g. Nissan Patrol 2024"
+                      />
+                    </div>
+
+                    <div class="col-12 mt-2">
+                      <label class="form-label">Email (Optional)</label>
+                      <input
+                        type="email"
+                        name="customer_email"
+                        class="form-control"
+                        placeholder="customer@example.com"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <button type="submit" class="btn btn-success w-100 btn-lg">
+                  ✅ Confirm Sale
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Run once on load to set initial VAT
+      updateTotals();
+    </script>
+  </body>
+</html>

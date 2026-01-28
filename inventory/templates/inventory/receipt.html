@@ -1,0 +1,145 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Receipt #{{ order.order_id }}</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        background: #f4f4f9;
+        padding: 40px;
+      }
+      .receipt-container {
+        max-width: 400px; /* Standard thermal printer width look */
+        background: white;
+        margin: 0 auto;
+        padding: 20px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        border: 1px solid #ddd;
+      }
+      .receipt-header {
+        text-align: center;
+        border-bottom: 2px dashed #333;
+        padding-bottom: 10px;
+        margin-bottom: 15px;
+      }
+      .receipt-footer {
+        text-align: center;
+        font-size: 0.8em;
+        color: #666;
+        margin-top: 20px;
+        border-top: 1px solid #eee;
+        padding-top: 10px;
+      }
+      .table-plain th,
+      .table-plain td {
+        border: none;
+        padding: 5px 0;
+      }
+      .total-line {
+        border-top: 2px solid #333;
+        font-weight: bold;
+        font-size: 1.2em;
+      }
+
+      /* Hides the buttons when printing */
+      @media print {
+        body {
+          background: white;
+          padding: 0;
+        }
+        .receipt-container {
+          box-shadow: none;
+          border: none;
+          width: 100%;
+          max-width: 100%;
+        }
+        .no-print {
+          display: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="receipt-container">
+      <div class="receipt-header">
+        <h2>DELTA AUTO PARTS</h2>
+        <p>Riyadh Branch - Exit 10</p>
+        <p>Tel: +966 50 123 4567</p>
+      </div>
+
+      <div class="mb-3">
+        <strong>Order:</strong> {{ order.order_id }}<br />
+        <strong>Date:</strong> {{ order.created_at|date:"Y-m-d H:i" }}<br />
+        <strong>Seller:</strong> {{ order.seller.username }}<br />
+
+        {% if order.customer %}
+        <div
+          style="margin-top: 5px; padding-top: 5px; border-top: 1px dashed #ddd"
+        >
+          <strong>Customer:</strong> {{ order.customer.name }}<br />
+          <strong>Phone:</strong> {{ order.customer.phone_number }}<br />
+          <strong>Car:</strong> {{ order.customer.car_model }}
+        </div>
+        {% elif order.customer_email %}
+        <strong>Email:</strong> {{ order.customer_email }} {% endif %}
+      </div>
+
+      <table class="table table-plain w-100">
+        <thead>
+          <tr style="border-bottom: 1px solid #ddd">
+            <th>Item</th>
+            <th class="text-center">Qty</th>
+            <th class="text-end">Price</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for sale in order.items.all %}
+          <tr>
+            <td>
+              {{ sale.part.name }}<br />
+              <small style="color: #777">{{ sale.part.part_number }}</small>
+            </td>
+            <td class="text-center">{{ sale.quantity }}</td>
+            <td class="text-end">{{ sale.total_revenue }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <div class="mt-3">
+        <div class="d-flex justify-content-between">
+          <span>Subtotal:</span>
+          <span>{{ order.subtotal }}</span>
+        </div>
+        <div class="d-flex justify-content-between text-danger">
+          <span>Discount:</span>
+          <span>-{{ order.discount_amount }}</span>
+        </div>
+        <div class="d-flex justify-content-between text-muted">
+          <span>VAT (15%):</span>
+          <span>{{ order.vat_amount }}</span>
+        </div>
+        <div class="d-flex justify-content-between total-line mt-2 pt-2">
+          <span>TOTAL:</span>
+          <span>SAR {{ order.grand_total }}</span>
+        </div>
+      </div>
+
+      <div class="receipt-footer">
+        <p>Thank you for your business!</p>
+        <p>Items can be returned within 7 days with this receipt.</p>
+        <div class="no-print mt-4 d-grid gap-2">
+          <button onclick="window.print()" class="btn btn-primary">
+            🖨️ Print Receipt
+          </button>
+          <a href="{% url 'part_search' %}" class="btn btn-secondary"
+            >New Sale</a
+          >
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
