@@ -1,198 +1,125 @@
-<!doctype html>
-<html>
-  <head>
-    <title>PartSync Search</title>
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
-      rel="stylesheet"
-    />
-  </head>
-  <body class="bg-light">
-    <div class="container mt-5">
-      <div class="d-flex justify-content-end mb-3 gap-2">
-        <a
-          href="{% url 'cart_view' %}"
-          class="btn btn-primary position-relative"
-        >
-          🛒 View Cart
-          <span
-            id="cart-badge"
-            class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
-          >
-            {{ cart_total_count }}
-          </span>
+{% extends 'inventory/base.html' %}
+
+{% block title %}Search Parts{% endblock %}
+
+{% block content %}
+<div class="container">
+    
+    <div class="d-flex justify-content-end mb-3 gap-2">
+        <a href="{% url 'cart_view' %}" class="btn btn-primary position-relative">
+            🛒 View Cart
+            <span id="cart-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                {{ cart_total_count }}
+            </span>
         </a>
-
-        <a href="{% url 'order_list' %}" class="btn btn-info text-white">
-          🧾 Past Receipts
-        </a>
-
-        <a href="{% url 'low_stock_list' %}" class="btn btn-warning">
-          ⚠️ Low Stock
-        </a>
-
-        <a href="{% url 'scanner_view' %}" class="btn btn-secondary">
-          📷 Open Scanner
-        </a>
-
-        <a href="{% url 'sales_history' %}" class="btn btn-success">
-          💰 View Daily Sales
-        </a>
-      </div>
-
-      <div class="card shadow">
-        <div class="card-header bg-primary text-white">
-          <h3>🚗 Part Finder</h3>
-        </div>
-        <div class="card-body">
-          <form method="GET">
-            <div class="mb-3">
-              <label class="form-label">Select Car Model:</label>
-              <select
-                name="vehicle"
-                class="form-select"
-                onchange="this.form.submit()"
-              >
-                <option value="">-- Choose Car --</option>
-                {% for car in vehicles %}
-                <option value="{{ car.id }}">{{ car }}</option>
-                {% endfor %}
-              </select>
-            </div>
-          </form>
-        </div>
-      </div>
-
-      {% if results %}
-      <div class="mt-4">
-        <h4>Parts that fit:</h4>
-        <div class="list-group">
-          {% for part in results %}
-          <div class="list-group-item list-group-item-action">
-            <div class="d-flex w-100 justify-content-between">
-              <h5 class="mb-1">{{ part.name }}</h5>
-              <small class="text-muted">{{ part.part_number }}</small>
-            </div>
-            <p class="mb-1">
-              Price: <strong>{{ part.selling_price }} SAR</strong>
-            </p>
-            <hr />
-            <div>
-              <small class="text-muted">Stock Levels:</small>
-              <ul class="list-group list-group-flush mt-1">
-                {% for stock in part.stock_set.all %}
-                <li
-                  class="list-group-item d-flex justify-content-between align-items-center px-0"
-                >
-                  <span>
-                    {{ stock.branch.name }}
-                    <span
-                      class="badge rounded-pill {% if stock.quantity <= 3 %}bg-danger{% else %}bg-primary{% endif %}"
-                    >
-                      {{ stock.quantity }}
-                    </span>
-                  </span>
-
-                  {% if stock.quantity > 0 %}
-                  <form
-                    class="d-flex align-items-center gap-2 add-to-cart-form"
-                    data-stock-id="{{ stock.id }}"
-                  >
-                    {% csrf_token %}
-
-                    <input
-                      type="number"
-                      name="quantity"
-                      class="form-control form-control-sm"
-                      value="1"
-                      min="1"
-                      max="{{ stock.quantity }}"
-                      style="width: 70px"
-                    />
-
-                    <button
-                      type="submit"
-                      class="btn btn-sm btn-outline-primary text-nowrap"
-                    >
-                      🛒 Add
-                    </button>
-                  </form>
-                  {% else %}
-                  <button class="btn btn-sm btn-secondary" disabled>
-                    No Stock
-                  </button>
-                  {% endif %}
-                </li>
-                {% empty %}
-                <li class="list-group-item text-danger px-0">Out of Stock</li>
-                {% endfor %}
-              </ul>
-            </div>
-          </div>
-          {% endfor %}
-        </div>
-      </div>
-      {% endif %}
+        <a href="{% url 'order_list' %}" class="btn btn-info text-white">🧾 History</a>
+        {% if user.is_superuser %}
+            <a href="{% url 'low_stock_list' %}" class="btn btn-warning">⚠️ Low Stock</a>
+        {% endif %}
+        <a href="{% url 'scanner_view' %}" class="btn btn-secondary">📷 Scanner</a>
     </div>
 
-    <script>
-      document.querySelectorAll(".add-to-cart-form").forEach((form) => {
-        form.addEventListener("submit", function (e) {
-          e.preventDefault(); // STOP THE PAGE REFRESH
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h3 class="mb-0">🚗 Part Finder</h3>
+        </div>
+        <div class="card-body text-center py-4">
+            {% if request.GET.vehicle %}
+                {% for car in vehicles %}
+                    {% if car.id|stringformat:"s" == request.GET.vehicle %}
+                        <h4 class="text-success mb-3">✅ Selected: {{ car }}</h4>
+                    {% endif %}
+                {% endfor %}
+                <a href="{% url 'vehicle_catalog' %}" class="btn btn-outline-dark">Change Car</a>
+                <a href="{% url 'part_search' %}" class="btn btn-danger ms-2">Clear</a>
+            {% else %}
+                <h5 class="text-muted mb-3">Start by selecting a vehicle</h5>
+                <a href="{% url 'vehicle_catalog' %}" class="btn btn-primary btn-lg px-5">🚗 Select Car Model</a>
+            {% endif %}
+        </div>
+    </div>
 
-          const stockId = this.dataset.stockId;
-          const quantity = this.querySelector('input[name="quantity"]').value;
-          const csrfToken = this.querySelector(
-            'input[name="csrfmiddlewaretoken"]',
-          ).value;
-          const btn = this.querySelector("button");
+    {% if results %}
+    <div class="mt-4">
+        <h4>Available Parts</h4>
+        <div class="list-group">
+            {% for part in results %}
+            <div class="list-group-item list-group-item-action shadow-sm mb-2 border-0">
+                <div class="d-flex w-100 justify-content-between">
+                    <h5 class="mb-1 text-primary">{{ part.name }}</h5>
+                    <small class="text-muted">{{ part.part_number }}</small>
+                </div>
+                <p class="mb-1 fw-bold fs-5">{{ part.selling_price }} SAR</p>
+                <hr class="my-2">
+                
+                <ul class="list-group list-group-flush">
+                    {% for stock in part.stock_set.all %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center px-0 bg-transparent">
+                        <span>
+                            <i class="fa-solid fa-store text-muted me-2"></i> {{ stock.branch.name }}
+                            <span class="badge rounded-pill {% if stock.quantity <= 3 %}bg-danger{% else %}bg-success{% endif %}">
+                                {{ stock.quantity }} left
+                            </span>
+                        </span>
+                        
+                        {% if stock.quantity > 0 %}
+                        <form class="d-flex align-items-center gap-2 add-to-cart-form" data-stock-id="{{ stock.id }}">
+                            {% csrf_token %}
+                            <input type="number" name="quantity" class="form-control form-control-sm text-center" value="1" min="1" max="{{ stock.quantity }}" style="width: 60px;">
+                            <button type="submit" class="btn btn-sm btn-outline-primary">Add</button>
+                        </form>
+                        {% else %}
+                        <button class="btn btn-sm btn-secondary" disabled>No Stock</button>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
 
-          // Visual Feedback: Change button text temporarily
-          const originalText = btn.innerHTML;
-          btn.innerHTML = "⏳...";
-          btn.disabled = true;
+{% block scripts %}
+<script>
+    // Copy your existing Add to Cart Javascript here
+    document.querySelectorAll('.add-to-cart-form').forEach(form => {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault(); 
+            const stockId = this.dataset.stockId;
+            const quantity = this.querySelector('input[name="quantity"]').value;
+            const csrfToken = this.querySelector('input[name="csrfmiddlewaretoken"]').value;
+            const btn = this.querySelector('button');
+            const originalText = btn.innerHTML;
+            
+            btn.innerHTML = '⏳';
+            btn.disabled = true;
 
-          // Send to Server
-          fetch(`/inventory/add-to-cart/${stockId}/`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/x-www-form-urlencoded",
-              "X-CSRFToken": csrfToken,
-            },
-            body: `quantity=${quantity}`,
-          })
-            .then((response) => response.json())
-            .then((data) => {
-              if (data.success) {
-                // Success! Update Cart Badge
-                document.getElementById("cart-badge").innerText =
-                  data.total_items;
-
-                // Visual Success Indicator
-                btn.innerHTML = "✅ Added";
-                btn.classList.remove("btn-outline-primary");
-                btn.classList.add("btn-success");
-
-                // Reset button after 1 second
-                setTimeout(() => {
-                  btn.innerHTML = originalText;
-                  btn.disabled = false;
-                  btn.classList.remove("btn-success");
-                  btn.classList.add("btn-outline-primary");
-                }, 1000);
-              } else {
-                alert(data.message); // Show error (e.g., Not enough stock)
-                btn.innerHTML = originalText;
-                btn.disabled = false;
-              }
+            fetch(`/inventory/add-to-cart/${stockId}/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': csrfToken },
+                body: `quantity=${quantity}`
             })
-            .catch((error) => {
-              console.error("Error:", error);
-              btn.innerHTML = originalText;
-              btn.disabled = false;
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('cart-badge').innerText = data.total_items;
+                    btn.innerHTML = '✔';
+                    btn.classList.replace('btn-outline-primary', 'btn-success');
+                    setTimeout(() => {
+                        btn.innerHTML = originalText;
+                        btn.disabled = false;
+                        btn.classList.replace('btn-success', 'btn-outline-primary');
+                    }, 1000);
+                } else {
+                    alert(data.message);
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                }
             });
         });
-      });
-    </script>
-  </body>
-</html>
+    });
+</script>
+{% endblock %}

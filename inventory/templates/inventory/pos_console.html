@@ -1,0 +1,241 @@
+{% extends 'inventory/base.html' %}
+{% load static %}
+
+{% block title %}POS Console{% endblock %}
+
+{% block content %}
+<style>
+    /* === 1. HIDE WEBSITE INTERFACE (The Fix) === */
+    /* This makes the POS take over the whole screen */
+    nav, footer, .alert { display: none !important; } 
+    
+    /* === 2. LAYOUT: Full Screen Workstation === */
+    body { 
+        background-color: #dce1e6; 
+        height: 100vh; 
+        overflow: hidden; /* Stop scrolling */
+        margin: 0; 
+        padding: 0;
+    }
+    
+    /* Reset main padding because we hid the header */
+    main { 
+        padding: 10px !important; 
+        height: 100vh !important; 
+        max-width: 100% !important;
+        margin: 0;
+    }
+    
+    .pos-container { display: flex; gap: 10px; height: 100%; }
+
+    /* === 3. LEFT SIDE: The Active Order === */
+    .order-panel {
+        flex: 3;
+        background: white;
+        border: 1px solid #ccc;
+        display: flex;
+        flex-direction: column;
+        border-radius: 4px;
+        box-shadow: 0 0 10px rgba(0,0,0,0.05);
+    }
+    .order-table-container { flex: 1; overflow-y: auto; }
+    
+    .table-dense th { 
+        background: #2c3e50; 
+        color: white; 
+        padding: 10px; 
+        font-size: 0.9rem; 
+        position: sticky; 
+        top: 0; 
+        z-index: 10;
+    }
+    .table-dense td { 
+        padding: 8px 10px; 
+        border-bottom: 1px solid #eee; 
+        vertical-align: middle; 
+        font-size: 1rem; 
+    }
+    .table-dense tr:nth-child(even) { background-color: #f8f9fa; }
+    
+    /* === 4. RIGHT SIDE: Controls & Totals === */
+    .control-panel {
+        flex: 1.2;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    /* Input Box */
+    .scan-box {
+        background: #2c3e50;
+        padding: 15px;
+        border-radius: 4px;
+        color: white;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+    }
+    .scan-input {
+        width: 100%;
+        padding: 15px;
+        font-size: 1.2rem;
+        border: 2px solid #3498db;
+        border-radius: 4px;
+        background: #fff;
+        color: #333;
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+    .scan-input:focus { outline: none; box-shadow: 0 0 15px rgba(52, 152, 219, 0.8); border-color: #5dade2; }
+
+    /* Big Totals Display */
+    .totals-display {
+        background: black;
+        color: #00ff00; /* Green Terminal Text */
+        font-family: 'Courier New', monospace;
+        padding: 30px;
+        border-radius: 4px;
+        text-align: right;
+        font-size: 3rem;
+        font-weight: bold;
+        box-shadow: inset 0 0 15px rgba(0,0,0,0.8);
+        border: 2px solid #444;
+    }
+    .totals-label { font-size: 0.9rem; color: #aaa; display: block; margin-bottom: 5px; font-family: sans-serif; }
+
+    /* Actions */
+    .action-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-top: auto; 
+    }
+    .btn-pos {
+        height: 70px;
+        font-weight: bold;
+        font-size: 1.2rem;
+        text-transform: uppercase;
+        border-radius: 4px;
+        border: none;
+        cursor: pointer;
+        transition: transform 0.1s;
+    }
+    .btn-pos:active { transform: scale(0.98); }
+    
+    .btn-pay { background: #27ae60; color: white; grid-column: span 2; height: 90px; font-size: 1.8rem; }
+    .btn-pay:hover { background: #219150; }
+    
+    .btn-clear { background: #c0392b; color: white; }
+    .btn-clear:hover { background: #a93226; }
+    
+    .btn-hold { background: #f39c12; color: white; }
+    .btn-hold:hover { background: #d68910; }
+    
+    /* Exit Button (Since we hid the navbar) */
+    .exit-btn {
+        text-align: center;
+        margin-top: 10px;
+    }
+    .exit-btn a { color: #7f8c8d; text-decoration: none; font-size: 0.9rem; }
+    .exit-btn a:hover { color: #c0392b; }
+</style>
+
+<div class="pos-container">
+    
+    <div class="order-panel">
+        <div class="order-table-container">
+            <table class="table table-dense w-100 mb-0">
+                <thead>
+                    <tr>
+                        <th style="width: 5%">#</th>
+                        <th style="width: 20%">Part No.</th>
+                        <th style="width: 35%">Description</th>
+                        <th style="width: 10%" class="text-center">Qty</th>
+                        <th style="width: 15%" class="text-end">Price</th>
+                        <th style="width: 15%" class="text-end">Total</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="cart-table-body">
+                    {% for item in cart_items %}
+                    <tr>
+                        <td>{{ forloop.counter }}</td>
+                        <td class="fw-bold text-primary">{{ item.stock.part.part_number }}</td>
+                        <td>{{ item.stock.part.name }}</td>
+                        <td class="text-center">
+                            <span class="badge bg-secondary fs-6">{{ item.quantity }}</span>
+                        </td>
+                        <td class="text-end">{{ item.stock.part.selling_price }}</td>
+                        <td class="text-end fw-bold">{{ item.total_price }}</td>
+                        <td class="text-center">
+                            <form action="{% url 'update_cart_item' item.stock.id %}" method="POST" style="display:inline;">
+                                {% csrf_token %}
+                                <input type="hidden" name="quantity" value="0">
+                                <button type="submit" class="btn btn-sm text-danger border-0 p-0 fs-5">×</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center py-5 text-muted">
+                            <h2 style="opacity: 0.3; font-size: 3rem;">📦</h2>
+                            <h4>Ready for Sale</h4>
+                            <p>Scan a barcode to begin...</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="control-panel">
+        
+        <div class="scan-box">
+            <label class="small text-white-50 mb-1">SCAN ITEM / SEARCH</label>
+            <form action="{% url 'part_search' %}" method="GET">
+                <input type="text" name="q" class="scan-input" placeholder="SCAN BARCODE..." id="pos-input" autocomplete="off" autofocus>
+            </form>
+        </div>
+
+        <div class="totals-display">
+            <span class="totals-label">TOTAL (SAR)</span>
+            {{ subtotal|floatformat:2 }}
+        </div>
+
+        <div class="action-grid">
+<button id="btn-void" class="btn-pos btn-clear">
+    🗑️ Void
+</button>            <button class="btn-pos btn-hold">
+                ✋ Hold
+            </button>
+            <a href="{% url 'finalize_order' %}" class="btn-pos btn-pay d-flex align-items-center justify-content-center text-decoration-none">
+                💵 PAY
+            </a>
+        </div>
+        
+        <div class="exit-btn">
+            <a href="{% url 'part_search' %}">← Exit POS Mode (Back to Dashboard)</a>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Force Focus Logic
+    const input = document.getElementById('pos-input');
+    input.focus();
+    
+    // Enterprise Mode: Click anywhere on grey screen -> Focuses input
+    document.addEventListener('click', function(e) {
+        // Only refocus if they didn't click a button or link
+        if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'A' && e.target.tagName !== 'INPUT') {
+            input.focus();
+        }
+    });
+    // Handle the Void Button
+    document.getElementById('btn-void').addEventListener('click', function() {
+        if (confirm('Are you sure you want to clear the entire order?')) {
+            window.location.href = '{% url "cart_view" %}';
+        }
+    });
+</script>
+
+{% endblock %}

@@ -15,7 +15,8 @@ def is_manager(user):
 
 # --- 1. DASHBOARD & SEARCH ---
 def part_search(request):
-    vehicles = Vehicle.objects.all()
+    # Sort by Make (A-Z), then Model (A-Z), then Year (Newest First)
+    vehicles = Vehicle.objects.all().order_by('make', 'model', 'year')
     query_vehicle_id = request.GET.get('vehicle')
     query_barcode = request.GET.get('q')
     
@@ -201,7 +202,14 @@ def finalize_order(request):
 @login_required
 def receipt_view(request, order_id):
     order = get_object_or_404(Order, order_id=order_id)
-    return render(request, 'inventory/receipt.html', {'order': order})
+    
+    # Calculate the base amount for the receipt label
+    taxable_amount = order.subtotal - order.discount_amount
+    
+    return render(request, 'inventory/receipt.html', {
+        'order': order,
+        'taxable_amount': taxable_amount  # <--- Sending the correct number
+    })
 
 @login_required
 def order_list(request):
@@ -318,3 +326,51 @@ def export_sales_csv(request):
 def low_stock_list(request):
     low_stock_items = Stock.objects.filter(quantity__lte=10).order_by('quantity')
     return render(request, 'inventory/low_stock.html', {'low_stock_items': low_stock_items})
+
+def vehicle_catalog(request):
+    # 1. Fetch all vehicles, sorted by Model (A-Z) and Year (Oldest to Newest)
+    # Note: You requested ascending 'year' (1980 -> 2026)
+    vehicles = Vehicle.objects.all().order_by('make', 'model', 'year')
+
+    # 2. Group them by Model (e.g., "Patrol": [1980 object, 1981 object...])
+    grouped_vehicles = {}
+    for v in vehicles:
+        if v.model not in grouped_vehicles:
+            grouped_vehicles[v.model] = []
+        grouped_vehicles[v.model].append(v)
+
+    return render(request, 'inventory/vehicle_catalog.html', {
+        'grouped_vehicles': grouped_vehicles
+    })
+    
+    # In inventory/views.py
+
+def pos_console(request):
+    # 1. Get the current cart
+    cart = request.session.get('cart', {})
+    cart_items = []
+    subtotal = 0
+    total_qty = 0
+
+    # 2. Build the list of items
+    for stock_id, quantity in cart.items():
+        try:
+            stock = Stock.objects.get(id=stock_id)
+            total_price = stock.part.selling_price * quantity
+            subtotal += total_price
+            total_qty += quantity
+            
+            cart_items.append({
+                'stock': stock,
+                'quantity': quantity,
+                'total_price': total_price,
+            })
+        except Stock.DoesNotExist:
+            continue
+
+    # 3. Render the "Console" template
+    return render(request, 'inventory/pos_console.html', {
+        'cart_items': cart_items,
+        'subtotal': subtotal,
+        'cart_total_count': total_qty
+    })

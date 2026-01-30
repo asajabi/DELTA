@@ -1,145 +1,281 @@
-<!doctype html>
-<html>
-  <head>
-    <title>Receipt #{{ order.order_id }}</title>
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
-      rel="stylesheet"
-    />
-    <style>
-      body {
-        background: #f4f4f9;
-        padding: 40px;
-      }
-      .receipt-container {
-        max-width: 400px; /* Standard thermal printer width look */
-        background: white;
-        margin: 0 auto;
-        padding: 20px;
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-        border: 1px solid #ddd;
-      }
-      .receipt-header {
-        text-align: center;
-        border-bottom: 2px dashed #333;
-        padding-bottom: 10px;
-        margin-bottom: 15px;
-      }
-      .receipt-footer {
-        text-align: center;
-        font-size: 0.8em;
-        color: #666;
-        margin-top: 20px;
-        border-top: 1px solid #eee;
-        padding-top: 10px;
-      }
-      .table-plain th,
-      .table-plain td {
-        border: none;
-        padding: 5px 0;
-      }
-      .total-line {
-        border-top: 2px solid #333;
-        font-weight: bold;
-        font-size: 1.2em;
-      }
+{% extends 'inventory/base.html' %}
+{% load static %}
 
-      /* Hides the buttons when printing */
-      @media print {
-        body {
-          background: white;
-          padding: 0;
-        }
-        .receipt-container {
-          box-shadow: none;
-          border: none;
-          width: 100%;
-          max-width: 100%;
-        }
-        .no-print {
-          display: none !important;
-        }
-      }
-    </style>
-  </head>
-  <body>
-    <div class="receipt-container">
-      <div class="receipt-header">
-        <h2>DELTA AUTO PARTS</h2>
-        <p>Riyadh Branch - Exit 10</p>
-        <p>Tel: +966 50 123 4567</p>
+{% block title %}Invoice #{{ order.order_id }}{% endblock %}
+
+{% block content %}
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&family=Roboto:wght@400;500;700&display=swap');
+
+  :root {
+    --official-blue: #1a237e;
+  }
+
+  /* =========================
+     ULTRA-TIGHT PRINT CONFIG
+     ========================= */
+  @media print {
+    @page { size: A4; margin: 0; }
+
+    body, html {
+      margin: 0 !important;
+      padding: 0 !important;
+      height: 100vh;
+      background: #fff !important;
+      overflow: hidden;
+    }
+
+    header, footer, nav, .btn, .no-print, .navbar, .sidebar { 
+      display: none !important; 
+    }
+
+    .paper-sheet {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw !important;
+      height: 100vh !important;
+      margin: 0 !important;
+      padding: 2mm !important; 
+      display: flex !important;
+      flex-direction: column;
+      box-sizing: border-box !important;
+    }
+
+    /* Sealed border frame */
+    .border-frame {
+      flex: 1;
+      border: 2pt solid var(--official-blue) !important;
+      padding: 5mm !important;
+      display: flex !important;
+      flex-direction: column;
+      box-sizing: border-box !important;
+    }
+  }
+
+  /* =========================
+     SCREEN PREVIEW
+     ========================= */
+  body { background: #333; font-family: 'Roboto', 'Cairo', sans-serif; }
+
+  .paper-sheet {
+    background: #fff;
+    width: 210mm;
+    height: 297mm;
+    margin: 10px auto;
+    padding: 2mm;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    box-shadow: 0 0 20px rgba(0,0,0,0.5);
+  }
+
+  .border-frame {
+    border: 2px solid var(--official-blue);
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 8mm;
+    box-sizing: border-box;
+  }
+
+  /* Header Branding */
+  .header-section {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 2px solid var(--official-blue);
+    padding-bottom: 12px;
+    margin-bottom: 15px;
+  }
+  
+  /* Adjusted widths to accommodate single-line English name */
+  .header-col-en { width: 35%; color: var(--official-blue); }
+  .header-col-ar { width: 35%; color: var(--official-blue); text-align: right; }
+  
+  /* BIGGER LOGO */
+  .header-logo { width: 25%; text-align: center; }
+  .header-logo img { 
+    max-height: 110px; /* Increased from 70px */
+    width: auto; 
+    display: block;
+    margin: 0 auto;
+  }
+
+  .brand-en { font-weight: 800; font-size: 17pt; white-space: nowrap; }
+  .brand-ar { font-weight: 800; font-size: 17pt; font-family: 'Cairo', sans-serif; white-space: nowrap; }
+  .sub-info { font-size: 8.5pt; color: #222; font-weight: 600; margin-top: 2px; }
+
+  .meta-bar {
+    background: #f1f3f5;
+    border: 1px solid #ccc;
+    border-left: 10px solid var(--official-blue);
+    padding: 10px 15px;
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    font-size: 10.5pt;
+  }
+
+  /* Table */
+  .table-container { flex: 1; }
+  .inv-table { width: 100%; border-collapse: collapse; }
+  .inv-table th {
+    background: var(--official-blue) !important;
+    color: #fff !important;
+    -webkit-print-color-adjust: exact;
+    padding: 8px;
+    font-size: 9pt;
+    text-align: left;
+  }
+  .inv-table td {
+    padding: 10px 8px;
+    border-bottom: 1px solid #eee;
+    font-size: 10.5pt;
+  }
+
+  /* Totals & Signatures */
+  .footer-section { margin-top: auto; }
+  .totals-grid {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 35px;
+    padding-top: 10px;
+  }
+  .totals-table { width: 35%; }
+  .totals-table td { padding: 4px 0; font-size: 11pt; }
+  .grand-total {
+    font-size: 15pt;
+    font-weight: 900;
+    color: var(--official-blue);
+    border-top: 2px solid var(--official-blue);
+    padding-top: 5px !important;
+  }
+
+  .signatures { display: flex; justify-content: space-between; margin-bottom: 20px; }
+  .sig-box { 
+    width: 38%; 
+    border-top: 1.5px solid #000; 
+    text-align: center; 
+    padding-top: 6px;
+    font-size: 10pt;
+    font-weight: bold;
+  }
+
+  .bottom-address {
+    text-align: center;
+    font-size: 8.5pt;
+    border-top: 1px solid #ddd;
+    padding-top: 10px;
+    color: var(--official-blue);
+    font-weight: bold;
+    line-height: 1.4;
+  }
+</style>
+
+<div class="paper-sheet">
+  <div class="border-frame">
+    <div class="header-section">
+      <div class="header-col-en">
+        <div class="brand-en">DELTA AL-BATT'HA TRAD. CO.</div>
+        <div class="sub-info">Auto Spare Parts & Tools</div>
+        <div class="sub-info">C.R.: 1010264062</div>
       </div>
 
-      <div class="mb-3">
-        <strong>Order:</strong> {{ order.order_id }}<br />
-        <strong>Date:</strong> {{ order.created_at|date:"Y-m-d H:i" }}<br />
-        <strong>Seller:</strong> {{ order.seller.username }}<br />
-
-        {% if order.customer %}
-        <div
-          style="margin-top: 5px; padding-top: 5px; border-top: 1px dashed #ddd"
-        >
-          <strong>Customer:</strong> {{ order.customer.name }}<br />
-          <strong>Phone:</strong> {{ order.customer.phone_number }}<br />
-          <strong>Car:</strong> {{ order.customer.car_model }}
-        </div>
-        {% elif order.customer_email %}
-        <strong>Email:</strong> {{ order.customer_email }} {% endif %}
+      <div class="header-logo">
+        <img src="{% static 'inventory/images/logo.png' %}" alt="LOGO">
       </div>
 
-      <table class="table table-plain w-100">
+      <div class="header-col-ar">
+        <div class="brand-ar" dir="rtl">شركة دلتا البطحاء للتجارة</div>
+        <div class="sub-info">لقطع غيار السيارات والمعدات</div>
+        <div class="sub-info" dir="rtl">س.ت : ١٠١٠٢٦٤٠٦٢</div>
+      </div>
+    </div>
+
+    <div class="meta-bar">
+      <div>
+        <strong>Invoice:</strong> #{{ order.order_id }}<br>
+        <strong>Date:</strong> {{ order.created_at|date:"d/m/Y h:i A" }}
+      </div>
+      <div style="text-align:right;">
+        <strong>Customer:</strong> 
+        {% if order.customer and order.customer.name != "0" %}
+          {{ order.customer.name }}
+        {% else %}
+          Walk-in Client
+        {% endif %}
+        <br>
+        {% if order.customer.car_model and order.customer.car_model != "0" %}
+          <small>{{ order.customer.car_model }}</small>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="table-container">
+      <table class="inv-table">
         <thead>
-          <tr style="border-bottom: 1px solid #ddd">
-            <th>Item</th>
-            <th class="text-center">Qty</th>
-            <th class="text-end">Price</th>
+          <tr>
+            <th style="width:6%; text-align:center;">#</th>
+            <th style="width:44%;">Description</th>
+            <th style="width:20%; text-align:center;">Part No</th>
+            <th style="width:10%; text-align:center;">Qty</th>
+            <th style="width:20%; text-align:right;">Total</th>
           </tr>
         </thead>
         <tbody>
           {% for sale in order.items.all %}
           <tr>
-            <td>
-              {{ sale.part.name }}<br />
-              <small style="color: #777">{{ sale.part.part_number }}</small>
-            </td>
-            <td class="text-center">{{ sale.quantity }}</td>
-            <td class="text-end">{{ sale.total_revenue }}</td>
+            <td style="text-align:center;">{{ forloop.counter }}</td>
+            <td><strong>{{ sale.part.name }}</strong></td>
+            <td style="text-align:center;">{{ sale.part.part_number }}</td>
+            <td style="text-align:center;">{{ sale.quantity }}</td>
+            <td style="text-align:right;">{{ sale.total_revenue }}</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
+    </div>
 
-      <div class="mt-3">
-        <div class="d-flex justify-content-between">
-          <span>Subtotal:</span>
-          <span>{{ order.subtotal }}</span>
-        </div>
-        <div class="d-flex justify-content-between text-danger">
-          <span>Discount:</span>
-          <span>-{{ order.discount_amount }}</span>
-        </div>
-        <div class="d-flex justify-content-between text-muted">
-          <span>VAT (15%):</span>
-          <span>{{ order.vat_amount }}</span>
-        </div>
-        <div class="d-flex justify-content-between total-line mt-2 pt-2">
-          <span>TOTAL:</span>
-          <span>SAR {{ order.grand_total }}</span>
-        </div>
+    <div class="footer-section">
+      <div class="totals-grid">
+        <table class="totals-table">
+          <tr>
+            <td>Subtotal</td>
+            <td style="text-align:right;">{{ order.subtotal }}</td>
+          </tr>
+          {% if order.discount_amount > 0 %}
+          <tr style="color:#c62828; font-weight: bold;">
+            <td>Discount</td>
+            <td style="text-align:right;">-{{ order.discount_amount }}</td>
+          </tr>
+          {% endif %}
+          <tr>
+            <td>VAT (15%)</td>
+            <td style="text-align:right;">{{ order.vat_amount }}</td>
+          </tr>
+          <tr class="grand-total">
+            <td>TOTAL</td>
+            <td style="text-align:right;">{{ order.grand_total }} SAR</td>
+          </tr>
+        </table>
       </div>
 
-      <div class="receipt-footer">
-        <p>Thank you for your business!</p>
-        <p>Items can be returned within 7 days with this receipt.</p>
-        <div class="no-print mt-4 d-grid gap-2">
-          <button onclick="window.print()" class="btn btn-primary">
-            🖨️ Print Receipt
-          </button>
-          <a href="{% url 'part_search' %}" class="btn btn-secondary"
-            >New Sale</a
-          >
-        </div>
+      <div class="signatures">
+        <div class="sig-box">Received By / المستلم</div>
+        <div class="sig-box">Salesman: {{ order.seller.username|default:"Admin" }}</div>
+      </div>
+
+      <div class="bottom-address">
+        <div>الرياض - الصناعية الأولى - تليفون: ٠١١٤٤٦٨٢٥٤ | Riyadh - 1st. Ind. Area - Tel: 011 4468254</div>
+        <div>E-mail: dbpparts@gmail.com</div>
       </div>
     </div>
-  </body>
-</html>
+  </div>
+</div>
+
+<div class="text-center no-print mt-3 mb-5">
+  <button onclick="window.print()" class="btn btn-primary btn-lg shadow px-5">PRINT NOW</button>
+  <a href="{% url 'part_search' %}" class="btn btn-outline-dark btn-lg ms-2">GO BACK</a>
+</div>
+{% endblock %}

@@ -1,0 +1,35 @@
+{% extends 'inventory/base.html' %}
+
+{% block title %}Select Car{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>🚗 Select Your Car</h2>
+        <a href="{% url 'part_search' %}" class="btn btn-outline-secondary">← Back to Dashboard</a>
+    </div>
+
+    <div class="row g-4">
+        {% for model_name, years in grouped_vehicles.items %}
+        <div class="col-md-6 col-lg-4">
+            <div class="card shadow-sm h-100 border-0">
+                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                    <span class="fw-bold">{{ model_name }}</span>
+                    <span class="badge bg-secondary">{{ years|length }} Years</span>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex flex-wrap gap-2">
+                        {% for car in years %}
+                        <a href="{% url 'part_search' %}?vehicle={{ car.id }}" 
+                           class="btn btn-outline-dark btn-sm px-3">
+                            {{ car.year }}
+                        </a>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
