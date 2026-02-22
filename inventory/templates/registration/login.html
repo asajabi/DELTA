@@ -1,0 +1,39 @@
+﻿{% extends "inventory/base.html" %}
+
+{% block title %}تسجيل الدخول | DELTA{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 460px;">
+    <div class="card delta-card p-4">
+        <h1 class="h4 mb-2">تسجيل الدخول</h1>
+        <p class="text-muted mb-4">استخدم حساب الموظف للدخول إلى نظام المبيعات والمخزون.</p>
+
+        {% if form.errors %}
+            <div class="alert alert-danger">اسم المستخدم أو كلمة المرور غير صحيحة.</div>
+        {% endif %}
+
+        {% if next %}
+            <input type="hidden" form="login-form" name="next" value="{{ next }}">
+        {% endif %}
+
+        <form id="login-form" method="post" novalidate>
+            {% csrf_token %}
+            <div class="mb-3">
+                <label for="id_username" class="form-label">اسم المستخدم</label>
+                <input id="id_username" type="text" name="username" class="form-control" required autofocus>
+            </div>
+            <div class="mb-3">
+                <label for="id_password" class="form-label">كلمة المرور</label>
+                <input id="id_password" type="password" name="password" class="form-control" required>
+            </div>
+            <button type="submit" class="btn btn-primary w-100">دخول</button>
+        </form>
+
+        <hr>
+        <p class="small text-muted mb-0">
+            نسيت كلمة المرور؟ تواصل مع المسؤول لإعادة التعيين عبر الأمر:
+            <code>python manage.py changepassword &lt;username&gt;</code>
+        </p>
+    </div>
+</div>
+{% endblock %}

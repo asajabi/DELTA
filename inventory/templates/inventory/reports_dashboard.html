@@ -1,0 +1,115 @@
+{% extends 'inventory/base.html' %}
+
+{% block title %}لوحة التقارير{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 px-lg-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+        <div>
+            <h1 class="h4 mb-1">لوحة التقارير</h1>
+            <p class="text-muted mb-0">ملخص الإيرادات والأرباح وأداء البائعين.</p>
+        </div>
+        <a href="{% url 'sales_history' %}" class="btn btn-outline-secondary">سجل المبيعات</a>
+    </div>
+
+    <div class="card delta-card mb-3">
+        <div class="card-body">
+            <form method="get" class="row g-2 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label">Start date</label>
+                    <input type="date" name="start_date" value="{{ start_date }}" class="form-control">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">End date</label>
+                    <input type="date" name="end_date" value="{{ end_date }}" class="form-control">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Branch</label>
+                    <select name="branch" class="form-select">
+                        <option value="">All</option>
+                        {% for branch in branches %}
+                            <option value="{{ branch.id }}" {% if current_branch == branch.id %}selected{% endif %}>{{ branch.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3 d-grid">
+                    <button class="btn btn-primary">Apply Filters</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-md-6">
+            <div class="card delta-card"><div class="card-body">
+                <div class="text-muted small">Total Revenue</div>
+                <div class="h3 mb-0 text-primary">{{ total_revenue|floatformat:2 }} SAR</div>
+            </div></div>
+        </div>
+        <div class="col-md-6">
+            <div class="card delta-card"><div class="card-body">
+                <div class="text-muted small">Total Profit</div>
+                <div class="h3 mb-0 {% if total_profit < 0 %}text-danger{% else %}text-success{% endif %}">{{ total_profit|floatformat:2 }} SAR</div>
+            </div></div>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-lg-6">
+            <div class="card delta-card h-100">
+                <div class="card-body">
+                    <h2 class="h6 mb-3">الإيراد اليومي</h2>
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr><th>Day</th><th class="text-end">Revenue (SAR)</th></tr>
+                            </thead>
+                            <tbody>
+                            {% for row in daily_stats %}
+                                <tr>
+                                    <td>{{ row.day|date:"Y-m-d" }}</td>
+                                    <td class="text-end">{{ row.total|floatformat:2 }}</td>
+                                </tr>
+                            {% empty %}
+                                <tr><td colspan="2" class="text-center text-muted py-4">No data.</td></tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card delta-card h-100">
+                <div class="card-body">
+                    <h2 class="h6 mb-3">أفضل البائعين</h2>
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Seller</th>
+                                    <th class="text-end">Orders</th>
+                                    <th class="text-end">Qty</th>
+                                    <th class="text-end">Revenue</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            {% for seller in top_sellers %}
+                                <tr>
+                                    <td>{{ seller.seller__username }}</td>
+                                    <td class="text-end">{{ seller.total_sales }}</td>
+                                    <td class="text-end">{{ seller.total_qty }}</td>
+                                    <td class="text-end">{{ seller.revenue|floatformat:2 }}</td>
+                                </tr>
+                            {% empty %}
+                                <tr><td colspan="4" class="text-center text-muted py-4">No data.</td></tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

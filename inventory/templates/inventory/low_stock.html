@@ -1,57 +1,57 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Low Stock Alert - DELTA</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
-</head>
-<body class="bg-light p-4">
+﻿{% extends 'inventory/base.html' %}
 
-<div class="container">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="text-danger">⚠️ Low Stock Report</h1>
-        <a href="{% url 'part_search' %}" class="btn btn-secondary">← Back to Dashboard</a>
+{% block title %}Low Stock{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 px-lg-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h4 mb-0">تنبيه المخزون المنخفض</h1>
+        <a href="{% url 'part_search' %}" class="btn btn-outline-secondary">عودة</a>
     </div>
 
-    <div class="card shadow">
+    <div class="card delta-card">
         <div class="card-body">
-            {% if low_stock_items %}
-                <table class="table table-striped">
-                    <thead class="table-dark">
+            <div class="table-responsive">
+                <table class="table table-striped align-middle mb-0">
+                    <thead>
                         <tr>
-                            <th>Quantity</th>
+                            <th>Qty</th>
                             <th>Part Name</th>
                             <th>Part Number</th>
                             <th>Branch</th>
-                            <th>Action</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for stock in low_stock_items %}
+                    {% for stock in low_stock_items %}
                         <tr>
                             <td>
-                                <span class="badge {% if stock.quantity == 0 %}bg-danger{% else %}bg-warning text-dark{% endif %} fs-6">
-                                    {{ stock.quantity }}
-                                </span>
+                                <span class="badge {% if stock.quantity == 0 %}text-bg-danger{% else %}text-bg-warning{% endif %}">{{ stock.quantity }}</span>
                             </td>
                             <td>{{ stock.part.name }}</td>
                             <td>{{ stock.part.part_number }}</td>
                             <td>{{ stock.branch.name }}</td>
-                            <td>
-                                <a href="#" class="btn btn-sm btn-outline-primary">📞 Call Supplier</a>
-                            </td>
                         </tr>
-                        {% endfor %}
+                    {% empty %}
+                        <tr><td colspan="4" class="text-center text-muted py-5">No low-stock items.</td></tr>
+                    {% endfor %}
                     </tbody>
                 </table>
-            {% else %}
-                <div class="text-center py-5">
-                    <h3 class="text-success">✅ All Stock Levels Are Good!</h3>
-                    <p>Nothing needs re-ordering right now.</p>
-                </div>
-            {% endif %}
+            </div>
         </div>
     </div>
-</div>
 
-</body>
-</html>
+    {% if page_obj and page_obj.paginator.num_pages > 1 %}
+        <nav class="mt-4">
+            <ul class="pagination justify-content-center">
+                {% if page_obj.has_previous %}
+                    <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a></li>
+                {% endif %}
+                <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+                {% if page_obj.has_next %}
+                    <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+    {% endif %}
+</div>
+{% endblock %}

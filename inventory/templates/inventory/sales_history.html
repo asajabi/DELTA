@@ -1,169 +1,133 @@
-<!doctype html>
-<html>
-  <head>
-    <title>Sales Ledger - DELTA</title>
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
-      rel="stylesheet"
-    />
-    <style>
-      body {
-        background-color: #f4f4f9;
-        padding: 20px;
-      }
-      .summary-box {
-        background: white;
-        padding: 20px;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        text-align: center;
-      }
-      .summary-title {
-        font-size: 0.9rem;
-        color: #666;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-      }
-      .summary-value {
-        font-size: 2rem;
-        font-weight: bold;
-      }
-      .profit-pos {
-        color: #198754;
-      } /* Green */
-      .profit-neg {
-        color: #dc3545;
-      } /* Red */
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1>📊 Accounting Module</h1>
-        <a href="{% url 'part_search' %}" class="btn btn-secondary"
-          >← Back to Search</a
-        >
-      </div>
+﻿{% extends 'inventory/base.html' %}
 
-      <div class="card mb-4 p-3">
-        <form method="GET" class="row g-3 align-items-end">
-          <div class="col-md-3">
-            <label class="form-label">Start Date</label>
-            <input
-              type="date"
-              name="start_date"
-              class="form-control"
-              value="{{ start_date }}"
-            />
-          </div>
-          <div class="col-md-3">
-            <label class="form-label">End Date</label>
-            <input
-              type="date"
-              name="end_date"
-              class="form-control"
-              value="{{ end_date }}"
-            />
-          </div>
-          <div class="col-md-3">
-            <label class="form-label">Filter by Branch</label>
-            <select name="branch" class="form-select">
-              <option value="">All Branches</option>
-              {% for b in branches %}
-              <option
-                value="{{ b.branch__id }}"
-                {% if current_branch == b.branch__id %}selected{% endif %}
-              >
-                {{ b.branch__name }}
-              </option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="col-md-3 d-flex gap-2">
-            <button type="submit" class="btn btn-primary flex-grow-1">
-              🔍 Filter
-            </button>
+{% block title %}سجل المبيعات{% endblock %}
 
-            <button
-              type="submit"
-              formaction="{% url 'export_sales_csv' %}"
-              class="btn btn-success"
-            >
-              📥 CSV
-            </button>
-          </div>
-        </form>
-      </div>
-
-      <div class="row mb-4">
-        <div class="col-md-6">
-          <div class="summary-box">
-            <div class="summary-title">Total Revenue</div>
-            <div class="summary-value text-primary">${{ total_revenue }}</div>
-          </div>
+{% block content %}
+<div class="container-fluid px-3 px-lg-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+        <div>
+            <h1 class="h4 mb-1">سجل المبيعات</h1>
+            <p class="text-muted mb-0">فلترة المبيعات حسب التاريخ والفرع مع تصدير CSV/XLSX.</p>
         </div>
-
-        {% if user.is_superuser %}
-        <div class="col-md-6">
-          <div class="summary-box">
-            <div class="summary-title">Net Profit</div>
-            <div
-              class="summary-value {% if total_profit >= 0 %}profit-pos{% else %}profit-neg{% endif %}"
-            >
-              ${{ total_profit }}
-            </div>
-          </div>
-        </div>
-        {% endif %}
-      </div>
-
-      <div class="card shadow">
-        <div class="card-body">
-          <table class="table table-hover">
-            <thead class="table-light">
-              <tr>
-                <th>Date</th>
-                <th>Part</th>
-                <th>Branch</th>
-                <th>Seller</th>
-                <th>Sold For</th>
-
-                {% if user.is_superuser %}
-                <th>Profit</th>
-                {% endif %}
-              </tr>
-            </thead>
-            <tbody>
-              {% for sale in sales %}
-              <tr>
-                <td>{{ sale.date_sold|date:"M d, H:i" }}</td>
-                <td>
-                  <strong>{{ sale.part.name }}</strong><br />
-                  <small class="text-muted">{{ sale.part.part_number }}</small>
-                </td>
-                <td>{{ sale.branch.name }}</td>
-                <td>{{ sale.seller.username }}</td>
-                <td>${{ sale.total_revenue }}</td>
-
-                {% if user.is_superuser %}
-                <td
-                  class="fw-bold {% if sale.total_profit >= 0 %}text-success{% else %}text-danger{% endif %}"
-                >
-                  ${{ sale.total_profit }}
-                </td>
-                {% endif %}
-              </tr>
-              {% empty %}
-              <tr>
-                <td colspan="6" class="text-center py-4 text-muted">
-                  No sales found for this period.
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
+        <a href="{% url 'reports_dashboard' %}" class="btn btn-outline-primary">لوحة التقارير</a>
     </div>
-  </body>
-</html>
+
+    <div class="card delta-card mb-3">
+        <div class="card-body">
+            <form method="get" class="row g-2 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label">Start date</label>
+                    <input type="date" name="start_date" class="form-control" value="{{ start_date }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">End date</label>
+                    <input type="date" name="end_date" class="form-control" value="{{ end_date }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Branch</label>
+                    <select name="branch" class="form-select">
+                        <option value="">All</option>
+                        {% for branch in branches %}
+                            <option value="{{ branch.id }}" {% if current_branch == branch.id %}selected{% endif %}>{{ branch.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex gap-2">
+                    <button class="btn btn-primary flex-grow-1" type="submit">Apply</button>
+                    <button class="btn btn-success" type="submit" formaction="{% url 'export_sales_csv' %}">CSV</button>
+                    <button class="btn btn-outline-success" type="submit" formaction="{% url 'export_sales_csv' %}" formmethod="get" name="format" value="xlsx">XLSX</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-md-6">
+            <div class="card delta-card"><div class="card-body">
+                <div class="text-muted small">Total Revenue</div>
+                <div class="h3 mb-0 text-primary">{{ total_revenue|floatformat:2 }} SAR</div>
+            </div></div>
+        </div>
+        <div class="col-md-6">
+            <div class="card delta-card"><div class="card-body">
+                <div class="text-muted small">Total Profit</div>
+                <div class="h3 mb-0 {% if total_profit < 0 %}text-danger{% else %}text-success{% endif %}">{{ total_profit|floatformat:2 }} SAR</div>
+            </div></div>
+        </div>
+    </div>
+
+    <div class="card delta-card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Order</th>
+                            <th>Part</th>
+                            <th>Branch</th>
+                            <th>Seller</th>
+                            <th>Status</th>
+                            <th>Qty</th>
+                            <th>Revenue</th>
+                            <th>Profit</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for sale in sales %}
+                        <tr>
+                            <td>{{ sale.date_sold|date:"Y-m-d H:i" }}</td>
+                            <td>{{ sale.order.order_id|default:'-' }}</td>
+                            <td>
+                                {{ sale.part.name|default:'-' }}
+                                {% if sale.part %}<div class="small text-muted">{{ sale.part.part_number }}</div>{% endif %}
+                            </td>
+                            <td>{{ sale.branch.name|default:'-' }}</td>
+                            <td>{{ sale.seller.username }}</td>
+                            <td>
+                                {% if sale.is_refunded %}
+                                    <span class="badge text-bg-danger">Refunded</span>
+                                {% else %}
+                                    <span class="badge text-bg-success">Completed</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ sale.quantity }}</td>
+                            <td>{% if sale.is_refunded %}0.00{% else %}{{ sale.total_revenue|floatformat:2 }}{% endif %}</td>
+                            <td class="{% if sale.total_profit < 0 %}text-danger{% else %}text-success{% endif %}">{{ sale.total_profit|floatformat:2 }}</td>
+                            <td>
+                                {% if not sale.is_refunded %}
+                                    <form method="post" action="{% url 'refund_sale' sale.id %}" onsubmit="return confirm('Confirm refund for this sale?');">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                        <button class="btn btn-sm btn-outline-danger">Refund</button>
+                                    </form>
+                                {% else %}
+                                    <span class="text-muted small">N/A</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="10" class="text-center py-5 text-muted">No sales for current filter.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {% if page_obj and page_obj.paginator.num_pages > 1 %}
+        <nav class="mt-4">
+            <ul class="pagination justify-content-center">
+                {% if page_obj.has_previous %}
+                    <li class="page-item"><a class="page-link" href="?start_date={{ start_date }}&end_date={{ end_date }}&branch={{ current_branch }}&page={{ page_obj.previous_page_number }}">Previous</a></li>
+                {% endif %}
+                <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+                {% if page_obj.has_next %}
+                    <li class="page-item"><a class="page-link" href="?start_date={{ start_date }}&end_date={{ end_date }}&branch={{ current_branch }}&page={{ page_obj.next_page_number }}">Next</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,48 +1,61 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Order History</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
-</head>
-<body class="bg-light p-4">
-<div class="container">
-    <div class="d-flex justify-content-between mb-4">
-        <h2>🧾 Order History</h2>
-        <a href="{% url 'part_search' %}" class="btn btn-secondary">← Back to Dashboard</a>
+﻿{% extends 'inventory/base.html' %}
+
+{% block title %}الطلبات{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 px-lg-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h4 mb-0">سجل الطلبات</h1>
+        <a href="{% url 'part_search' %}" class="btn btn-outline-secondary">عودة للبحث</a>
     </div>
 
-    <div class="card shadow">
+    <div class="card delta-card">
         <div class="card-body">
-            <table class="table table-hover">
-                <thead>
-                    <tr>
-                        <th>Order ID</th>
-                        <th>Date</th>
-                        <th>Seller</th>
-                        <th>Total</th>
-                        <th>Items</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Order ID</th>
+                            <th>Date</th>
+                            <th>Seller</th>
+                            <th>Branch</th>
+                            <th>Total</th>
+                            <th>Items</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
                     {% for order in orders %}
-                    <tr>
-                        <td><strong>{{ order.order_id }}</strong></td>
-                        <td>{{ order.created_at|date:"M d, H:i" }}</td>
-                        <td>{{ order.seller.username }}</td>
-                        <td>SAR {{ order.grand_total }}</td>
-                        <td>{{ order.items.count }} items</td>
-                        <td>
-                            <a href="{% url 'receipt_view' order.order_id %}" class="btn btn-sm btn-primary">
-                                📄 View Receipt
-                            </a>
-                        </td>
-                    </tr>
+                        <tr>
+                            <td><strong>{{ order.order_id }}</strong></td>
+                            <td>{{ order.created_at|date:"Y-m-d H:i" }}</td>
+                            <td>{{ order.seller.username }}</td>
+                            <td>{{ order.branch.name|default:'-' }}</td>
+                            <td>{{ order.grand_total|floatformat:2 }} SAR</td>
+                            <td>{{ order.items.count }}</td>
+                            <td><a href="{% url 'receipt_view' order.order_id %}" class="btn btn-sm btn-primary">Receipt</a></td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="7" class="text-center text-muted py-5">No orders found.</td></tr>
                     {% endfor %}
-                </tbody>
-            </table>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
+
+    {% if page_obj and page_obj.paginator.num_pages > 1 %}
+        <nav class="mt-4">
+            <ul class="pagination justify-content-center">
+                {% if page_obj.has_previous %}
+                    <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a></li>
+                {% endif %}
+                <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+                {% if page_obj.has_next %}
+                    <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+    {% endif %}
 </div>
-</body>
-</html>
+{% endblock %}

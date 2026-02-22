@@ -1,243 +1,193 @@
-{% extends 'inventory/base.html' %}
-{% load static %}
+﻿{% extends 'inventory/base.html' %}
 
 {% block title %}POS Console{% endblock %}
 
-{% block content %}
+{% block head_extra %}
 <style>
-    /* Hide website chrome to make POS feel full screen */
-    nav, footer, .alert { display: none !important; }
-
-    body {
-        background-color: #dce1e6;
-        height: 100vh;
-        overflow: hidden;
-        margin: 0;
-        padding: 0;
-    }
-
-    main {
-        padding: 10px !important;
-        height: 100vh !important;
-        max-width: 100% !important;
-        margin: 0;
-    }
-
-    .pos-container { display: flex; gap: 10px; height: 100%; }
-
-    .order-panel {
-        flex: 3;
-        background: white;
-        border: 1px solid #ccc;
-        display: flex;
-        flex-direction: column;
-        border-radius: 4px;
-        box-shadow: 0 0 10px rgba(0,0,0,0.05);
-    }
-    .order-table-container { flex: 1; overflow-y: auto; }
-
-    .table-dense th {
-        background: #2c3e50;
-        color: white;
-        padding: 10px;
-        font-size: 0.9rem;
-        position: sticky;
-        top: 0;
-        z-index: 10;
-    }
-    .table-dense td {
-        padding: 8px 10px;
-        border-bottom: 1px solid #eee;
-        vertical-align: middle;
-        font-size: 1rem;
-    }
-    .table-dense tr:nth-child(even) { background-color: #f8f9fa; }
-
-    .control-panel {
-        flex: 1.2;
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-    }
-
-    .scan-box {
-        background: #2c3e50;
-        padding: 15px;
-        border-radius: 4px;
-        color: white;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-    }
-    .scan-input {
-        width: 100%;
-        padding: 15px;
-        font-size: 1.2rem;
-        border: 2px solid #3498db;
-        border-radius: 4px;
-        background: #fff;
-        color: #333;
-        font-weight: bold;
-        text-transform: uppercase;
-    }
-    .scan-input:focus {
-        outline: none;
-        box-shadow: 0 0 15px rgba(52, 152, 219, 0.8);
-        border-color: #5dade2;
-    }
-
-    .totals-display {
-        background: black;
-        color: #00ff00;
-        font-family: 'Courier New', monospace;
-        padding: 30px;
-        border-radius: 4px;
-        text-align: right;
-        font-size: 3rem;
-        font-weight: bold;
-        box-shadow: inset 0 0 15px rgba(0,0,0,0.8);
-        border: 2px solid #444;
-    }
-    .totals-label {
-        font-size: 0.9rem;
-        color: #aaa;
-        display: block;
-        margin-bottom: 5px;
-        font-family: sans-serif;
-    }
-
-    .action-grid {
+    .pos-grid {
         display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 10px;
-        margin-top: auto;
+        grid-template-columns: 1.6fr 1fr;
+        gap: 1rem;
     }
-    .btn-pos {
-        height: 70px;
-        font-weight: bold;
-        font-size: 1.2rem;
-        text-transform: uppercase;
-        border-radius: 4px;
-        border: none;
-        cursor: pointer;
-        transition: transform 0.1s;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        text-decoration: none;
+
+    .search-input {
+        font-size: 1.1rem;
+        font-weight: 600;
+        letter-spacing: 0.2px;
     }
-    .btn-pos:active { transform: scale(0.98); }
 
-    .btn-pay { background: #27ae60; color: white; grid-column: span 2; height: 90px; font-size: 1.8rem; }
-    .btn-pay:hover { background: #219150; }
+    .total-box {
+        background: #111827;
+        color: #22c55e;
+        border-radius: 0.9rem;
+        padding: 1rem;
+        text-align: center;
+        font-family: Consolas, monospace;
+    }
 
-    .btn-clear { background: #c0392b; color: white; }
-    .btn-clear:hover { background: #a93226; }
+    .total-box .value {
+        font-size: 2rem;
+        font-weight: 700;
+    }
 
-    .btn-hold { background: #f39c12; color: white; }
-    .btn-hold:hover { background: #d68910; }
-
-    .exit-btn { text-align: center; margin-top: 10px; }
-    .exit-btn a { color: #7f8c8d; text-decoration: none; font-size: 0.9rem; }
-    .exit-btn a:hover { color: #c0392b; }
+    @media (max-width: 992px) {
+        .pos-grid {
+            grid-template-columns: 1fr;
+        }
+    }
 </style>
+{% endblock %}
 
-<div class="pos-container">
-
-    <div class="order-panel">
-        <div class="order-table-container">
-            <table class="table table-dense w-100 mb-0">
-                <thead>
-                    <tr>
-                        <th style="width: 5%">#</th>
-                        <th style="width: 20%">Part No.</th>
-                        <th style="width: 35%">Description</th>
-                        <th style="width: 10%" class="text-center">Qty</th>
-                        <th style="width: 15%" class="text-end">Price</th>
-                        <th style="width: 15%" class="text-end">Total</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody id="cart-table-body">
-                    {% for item in cart_items %}
-                    <tr>
-                        <td>{{ forloop.counter }}</td>
-                        <td class="fw-bold text-primary">{{ item.stock.part.part_number }}</td>
-                        <td>{{ item.stock.part.name }}</td>
-                        <td class="text-center">
-                            <span class="badge bg-secondary fs-6">{{ item.quantity }}</span>
-                        </td>
-                        <td class="text-end">{{ item.stock.part.selling_price|floatformat:2 }}</td>
-                        <td class="text-end fw-bold">{{ item.total_price|floatformat:2 }}</td>
-                        <td class="text-center">
-                            <form action="{% url 'update_cart_item' item.stock.id %}" method="POST" style="display:inline;">
-                                {% csrf_token %}
-                                <input type="hidden" name="quantity" value="0">
-                                <button type="submit" class="btn btn-sm text-danger border-0 p-0 fs-5" title="Remove">×</button>
-                            </form>
-                        </td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="7" class="text-center py-5 text-muted">
-                            <h2 style="opacity: 0.3; font-size: 3rem;">📦</h2>
-                            <h4>Ready for Sale</h4>
-                            <p>Scan a barcode to begin...</p>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+{% block content %}
+<div class="container-fluid px-3 px-lg-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h1 class="h4 mb-1">نقطة البيع</h1>
+            <p class="text-muted mb-0">اختصار لوحة المفاتيح: <kbd>F2</kbd> للدفع، <kbd>Esc</kbd> لمسح البحث.</p>
+        </div>
+        <div class="text-muted small">
+            {% if active_branch %}
+                الفرع الحالي: <strong>{{ active_branch.name }}</strong>
+            {% else %}
+                الفرع الحالي: <strong>غير محدد</strong>
+            {% endif %}
         </div>
     </div>
 
-    <div class="control-panel">
+    <div class="pos-grid">
+        <div class="vstack gap-3">
+            <div class="card delta-card">
+                <div class="card-body">
+                    <form method="get" class="row g-2 align-items-end">
+                        <div class="col-md-9">
+                            <label class="form-label">Scan / Search</label>
+                            <input id="pos-input" type="text" name="q" value="{{ query }}" class="form-control search-input" autocomplete="off" autofocus placeholder="Barcode / Part name / Part number">
+                        </div>
+                        <div class="col-md-3 d-grid">
+                            <button class="btn btn-primary" type="submit"><i class="fa-solid fa-magnifying-glass"></i> بحث</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
 
-        <div class="scan-box">
-            <label class="small text-white-50 mb-1">SCAN ITEM / SEARCH</label>
-            <form action="{% url 'part_search' %}" method="GET">
-                <input type="text" name="q" class="scan-input" placeholder="SCAN BARCODE..." id="pos-input" autocomplete="off" autofocus>
-            </form>
+            {% if results %}
+                <div class="card delta-card">
+                    <div class="card-body">
+                        <h2 class="h6 mb-3">نتائج البحث</h2>
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>القطعة</th>
+                                        <th>الفرع</th>
+                                        <th>المتوفر</th>
+                                        <th>السعر</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                {% for stock in results %}
+                                    <tr>
+                                        <td>
+                                            <div class="fw-semibold">{{ stock.part.name }}</div>
+                                            <small class="text-muted">{{ stock.part.part_number }}</small>
+                                        </td>
+                                        <td>{{ stock.branch.name }}</td>
+                                        <td>{{ stock.quantity }}</td>
+                                        <td>{{ stock.part.selling_price }} SAR</td>
+                                        <td>
+                                            <form method="post" action="{% url 'add_to_cart' stock.id %}" class="d-flex gap-2">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="next" value="{% url 'pos_console' %}{% if query %}?q={{ query|urlencode }}{% endif %}">
+                                                <input type="number" min="1" max="{{ stock.quantity }}" name="quantity" value="1" class="form-control form-control-sm text-center" style="max-width:90px;">
+                                                <button class="btn btn-sm btn-outline-primary">إضافة</button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
         </div>
 
-        <div class="totals-display">
-            <span class="totals-label">TOTAL (SAR)</span>
-            {{ subtotal|floatformat:2 }}
-        </div>
+        <div class="vstack gap-3">
+            <div class="card delta-card">
+                <div class="card-body">
+                    <h2 class="h6">السلة الحالية</h2>
+                    <div class="table-responsive" style="max-height: 420px; overflow:auto;">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>الصنف</th>
+                                    <th>الكمية</th>
+                                    <th>الإجمالي</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            {% for item in cart_items %}
+                                <tr>
+                                    <td>
+                                        <div class="fw-semibold">{{ item.stock.part.name }}</div>
+                                        <small class="text-muted">{{ item.stock.part.part_number }}</small>
+                                    </td>
+                                    <td>
+                                        <form method="post" action="{% url 'update_cart_item' item.stock.id %}" class="d-flex gap-1">
+                                            {% csrf_token %}
+                                            <input type="number" name="quantity" min="0" max="{{ item.stock.quantity }}" value="{{ item.quantity }}" class="form-control form-control-sm text-center" style="max-width:80px;">
+                                            <button class="btn btn-sm btn-outline-secondary">تحديث</button>
+                                        </form>
+                                    </td>
+                                    <td>{{ item.total_price|floatformat:2 }} SAR</td>
+                                </tr>
+                            {% empty %}
+                                <tr><td colspan="3" class="text-center text-muted py-4">السلة فارغة</td></tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
 
-        <div class="action-grid">
-            <!-- VOID = clears cart (POST) -->
-            <form action="{% url 'clear_cart' %}" method="POST">
-                {% csrf_token %}
-                <button type="submit" class="btn-pos btn-clear" onclick="return confirm('Are you sure you want to clear the entire order?');">
-                    🗑️ Void
-                </button>
-            </form>
+            <div class="total-box">
+                <div class="small text-light">SUBTOTAL</div>
+                <div class="value">{{ subtotal|floatformat:2 }} SAR</div>
+            </div>
 
-            <button type="button" class="btn-pos btn-hold" onclick="alert('Hold feature not implemented yet');">
-                ✋ Hold
-            </button>
-
-            <!-- PAY goes to Checkout page -->
-            <a href="{% url 'cart_view' %}" class="btn-pos btn-pay">
-                💵 PAY
-            </a>
-        </div>
-
-        <div class="exit-btn">
-            <a href="{% url 'part_search' %}">← Exit POS Mode (Back to Dashboard)</a>
+            <div class="d-grid gap-2">
+                <a href="{% url 'cart_view' %}" id="pay-btn" class="btn btn-success btn-lg"><i class="fa-solid fa-credit-card"></i> الدفع</a>
+                <form method="post" action="{% url 'clear_cart' %}" onsubmit="return confirm('Clear current cart?');">
+                    {% csrf_token %}
+                    <button class="btn btn-outline-danger w-100" type="submit"><i class="fa-solid fa-trash"></i> إفراغ السلة</button>
+                </form>
+            </div>
         </div>
     </div>
 </div>
+{% endblock %}
 
+{% block scripts %}
 <script>
-    // Force Focus Logic
-    const input = document.getElementById('pos-input');
-    if (input) input.focus();
+(function () {
+    const searchInput = document.getElementById('pos-input');
+    const payBtn = document.getElementById('pay-btn');
 
-    document.addEventListener('click', function(e) {
-        if (!input) return;
-        if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'A' && e.target.tagName !== 'INPUT') {
-            input.focus();
+    if (searchInput) {
+        searchInput.focus();
+    }
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'F2' && payBtn) {
+            event.preventDefault();
+            payBtn.click();
+        }
+        if (event.key === 'Escape' && searchInput) {
+            searchInput.value = '';
+            searchInput.focus();
         }
     });
+})();
 </script>
 {% endblock %}
