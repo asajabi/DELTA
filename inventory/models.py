@@ -2,7 +2,6 @@ import uuid
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
-from decimal import Decimal
 
 
 # 1. New Customer Model
@@ -67,36 +66,6 @@ class Stock(models.Model):
         unique_together = ('part', 'branch')
 
 # 6. THE NEW LEDGER (Sales History)
-# In inventory/models.py
-
-class Sale(models.Model):
-    part = models.ForeignKey(Part, on_delete=models.SET_NULL, null=True)
-    branch = models.ForeignKey(Branch, on_delete=models.SET_NULL, null=True)
-    seller = models.ForeignKey(User, on_delete=models.CASCADE) 
-    quantity = models.PositiveIntegerField(default=1)
-    
-    # Financials
-    price_at_sale = models.DecimalField(max_digits=10, decimal_places=2) 
-    cost_at_sale = models.DecimalField(max_digits=10, decimal_places=2, default=0) # <--- NEW FIELD
-    
-    date_sold = models.DateTimeField(default=timezone.now) 
-
-    def __str__(self):
-        return f"Sold {self.quantity} x {self.part.name}"
-
-    @property
-    def total_revenue(self):
-        return self.price_at_sale * self.quantity
-
-    @property
-    def total_cost(self):
-        return self.cost_at_sale * self.quantity
-
-    @property
-    def total_profit(self):
-        return self.total_revenue - self.total_cost
-    
-    # 1. NEW: The Order (The Receipt Wrapper)
 class Order(models.Model):
     # We use a UUID so people can't guess order numbers (e.g., 550e8400-e29b...)
     order_id = models.CharField(max_length=20, unique=True, editable=False) 

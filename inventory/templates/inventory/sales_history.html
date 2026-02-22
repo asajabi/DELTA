@@ -72,13 +72,7 @@
               {% for b in branches %}
               <option
                 value="{{ b.branch__id }}"
-                {%
-                if
-                current_branch=""
-                ="b.branch__id"
-                %}selected{%
-                endif
-                %}
+                {% if current_branch == b.branch__id %}selected{% endif %}
               >
                 {{ b.branch__name }}
               </option>
@@ -95,7 +89,7 @@
               formaction="{% url 'export_sales_csv' %}"
               class="btn btn-success"
             >
-              📥 Excel
+              📥 CSV
             </button>
           </div>
         </form>
