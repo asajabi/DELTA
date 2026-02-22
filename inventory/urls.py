@@ -27,4 +27,7 @@ urlpatterns = [
     
     # In inventory/urls.py
     path('pos/', views.pos_console, name='pos_console'),
+    
+    path('cart/clear/', views.clear_cart, name='clear_cart'),
+
 ]

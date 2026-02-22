@@ -1,21 +1,21 @@
 import csv
 import json
 from django.shortcuts import render, redirect, get_object_or_404
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.views.decorators.http import require_POST
 from django.utils import timezone
 from django.db.models import Q
 from django.contrib import messages
-from .models import Part, Vehicle, Stock, Sale, Order, Customer
+from .models import Part, Vehicle, Stock, Sale, Order, Customer, Branch
 
 # --- SECURITY HELPER ---
 def is_manager(user):
     return user.is_superuser
 
-# --- 1. DASHBOARD & SEARCH ---
+# --- 1. DASHBOARD & SEARCH (الكتالوج) ---
+@login_required
 def part_search(request):
-    # Sort by Make (A-Z), then Model (A-Z), then Year (Newest First)
     vehicles = Vehicle.objects.all().order_by('make', 'model', 'year')
     query_vehicle_id = request.GET.get('vehicle')
     query_barcode = request.GET.get('q')
@@ -31,7 +31,7 @@ def part_search(request):
             Q(barcode=query_barcode)
         )
 
-    # Calculate Cart Total for Badge
+    # حساب عدد عناصر السلة للشارة (Badge)
     cart = request.session.get('cart', {})
     cart_total_count = sum(cart.values())
 
@@ -42,23 +42,74 @@ def part_search(request):
         'cart_total_count': cart_total_count
     })
 
-# --- 2. CART FUNCTIONS ---
+# --- 2. POS SYSTEM (نقطة البيع - الكاشير) ---
 @login_required
-@require_POST
+def pos_console(request):
+    """
+    شاشة موحدة: اليسار للبحث والإضافة، واليمين للفاتورة الحالية.
+    """
+    # أ. منطق البحث داخل الـ POS
+    query = request.GET.get('q')
+    search_results = []
+    
+    if query:
+        search_results = Stock.objects.filter(
+            Q(part__part_number__icontains=query) |
+            Q(part__name__icontains=query) |
+            Q(part__barcode=query)
+        )
+
+    # ب. منطق عرض السلة
+    cart = request.session.get('cart', {})
+    cart_items = []
+    total_price = 0
+    total_qty = 0
+
+    for stock_id, quantity in cart.items():
+        # نستخدم filter().first() لتجنب الأخطاء لو القطعة حذفت
+        stock = Stock.objects.filter(id=stock_id).first()
+        if stock:
+            subtotal = stock.part.selling_price * quantity
+            total_price += subtotal
+            total_qty += quantity
+            cart_items.append({
+                'stock': stock,
+                'quantity': quantity,
+                'subtotal': subtotal
+            })
+
+    return render(request, 'inventory/pos_console.html', {
+        'results': search_results,
+        'query': query,
+        'cart_items': cart_items,
+        'subtotal': total_price, # المجموع الكلي
+        'cart_total_count': total_qty
+    })
+
+# --- 3. CART FUNCTIONS (تم الإصلاح: Redirect بدلاً من JSON) ---
+
+@login_required
 def add_to_cart(request, stock_id):
+    """
+    تضيف للسلة وتعيد المستخدم لنفس الصفحة التي جاء منها.
+    """
     stock = get_object_or_404(Stock, id=stock_id)
     
+    # محاولة جلب الكمية من الرابط (لزر الإضافة السريع) أو الفورم
     try:
-        quantity = int(request.POST.get('quantity', 1))
+        quantity = int(request.POST.get('quantity', request.GET.get('qty', 1)))
     except ValueError:
         quantity = 1
 
-    if stock.quantity < quantity:
-        return JsonResponse({
-            'success': False, 
-            'message': f'Not enough stock! Only {stock.quantity} left.'
-        }, status=400)
+    # تحديد الصفحة للعودة إليها (search أو pos)
+    next_url = request.GET.get('next') or request.META.get('HTTP_REFERER', 'part_search')
 
+    # التحقق من توفر الكمية
+    if stock.quantity < quantity:
+        messages.error(request, f"الكمية غير متوفرة! المتبقي {stock.quantity} فقط.")
+        return redirect(next_url)
+
+    # تحديث الجلسة (Session)
     cart = request.session.get('cart', {})
     stock_id_str = str(stock_id)
     
@@ -66,54 +117,61 @@ def add_to_cart(request, stock_id):
     cart[stock_id_str] = current_qty + quantity
     
     request.session['cart'] = cart
-    total_items = sum(cart.values())
-
-    return JsonResponse({
-        'success': True,
-        'message': f'Added {quantity} x {stock.part.name}',
-        'total_items': total_items
-    })
+    request.session.modified = True # مهم جداً لحفظ التغيير
+    
+    messages.success(request, f"تمت إضافة {stock.part.name}")
+    
+    return redirect(next_url)
 
 @login_required
 def update_cart_item(request, stock_id):
     if request.method == 'POST':
+        cart = request.session.get('cart', {})
+        stock_id_str = str(stock_id)
+        
+        # قراءة الكمية الجديدة من الإدخال
         try:
-            new_qty = int(request.POST.get('quantity', 0))
-            cart = request.session.get('cart', {})
-            stock_id_str = str(stock_id)
-
-            if stock_id_str in cart:
-                if new_qty > 0:
-                    stock = get_object_or_404(Stock, id=stock_id)
-                    if new_qty <= stock.quantity:
-                        cart[stock_id_str] = new_qty
-                        messages.success(request, "Cart updated.")
-                    else:
-                        messages.warning(request, f"Cannot add {new_qty}. Only {stock.quantity} in stock!")
-                else:
-                    del cart[stock_id_str]
-                    messages.success(request, "Item removed.")
-            
-            request.session['cart'] = cart
+            quantity = int(request.POST.get('quantity', 0))
         except ValueError:
-            pass
-            
-    return redirect('cart_view')
+            quantity = 0
+
+        if stock_id_str in cart:
+            if quantity > 0:
+                # التحقق من الحد الأقصى للمخزون
+                stock = Stock.objects.get(id=stock_id)
+                if quantity <= stock.quantity:
+                    cart[stock_id_str] = quantity
+                else:
+                    messages.warning(request, f"الحد الأقصى المتوفر: {stock.quantity}")
+                    cart[stock_id_str] = stock.quantity
+            else:
+                # حذف العنصر إذا الكمية 0
+                del cart[stock_id_str]
+
+        request.session['cart'] = cart
+        request.session.modified = True
+        
+    return redirect(request.META.get('HTTP_REFERER', 'cart_view'))
+
+@login_required
+def clear_cart(request):
+    request.session['cart'] = {}
+    request.session.modified = True
+    return redirect('pos_console')
 
 @login_required
 def cart_view(request):
+    # صفحة السلة التفصيلية (للمراجعة قبل الدفع)
     cart = request.session.get('cart', {})
     cart_items = []
     current_subtotal = 0
     estimated_profit = 0
     
     for stock_id, quantity in cart.items():
-        # Use filter().first() to avoid crash if part was deleted
         stock = Stock.objects.filter(id=stock_id).first()
         if stock:
             total_price = stock.part.selling_price * quantity
             total_cost = stock.part.cost_price * quantity
-            
             cart_items.append({
                 'stock': stock,
                 'quantity': quantity,
@@ -124,49 +182,42 @@ def cart_view(request):
             current_subtotal += total_price
             estimated_profit += (total_price - total_cost)
 
-    context = {
+    return render(request, 'inventory/pos_checkout.html', {
         'cart_items': cart_items,
         'subtotal': current_subtotal,
         'estimated_profit': estimated_profit,
-    }
-    return render(request, 'inventory/pos_checkout.html', context)
+    })
+
+# --- 4. CHECKOUT & ORDERS (إتمام البيع) ---
 
 @login_required
 def finalize_order(request):
     if request.method == 'POST':
         cart = request.session.get('cart', {})
         if not cart:
-            return redirect('part_search')
+            return redirect('pos_console')
 
-        # 1. Financials (Safe Float Conversion)
+        # 1. الحسابات المالية
         try:
-            discount = float(request.POST.get('discount') or 0)
-            vat_amount = float(request.POST.get('vat_amount') or 0)
-            grand_total = float(request.POST.get('grand_total') or 0)
-            subtotal = float(request.POST.get('subtotal_input') or 0)
+            subtotal = float(request.POST.get('subtotal_input', 0))
+            discount = float(request.POST.get('discount', 0))
+            vat_amount = float(request.POST.get('vat_amount', 0))
+            grand_total = float(request.POST.get('grand_total', 0))
         except ValueError:
-            discount = 0.0
-            vat_amount = 0.0
-            grand_total = 0.0
-            subtotal = 0.0
+            subtotal = discount = vat_amount = grand_total = 0
 
-        # 2. CRM (Customer Logic)
+        # 2. بيانات العميل
         customer_phone = request.POST.get('phone_number')
         customer_name = request.POST.get('customer_name')
-        customer_car = request.POST.get('customer_car')
         customer_obj = None
         
         if customer_phone:
             customer_obj, created = Customer.objects.get_or_create(
                 phone_number=customer_phone,
-                defaults={'name': customer_name or 'Unknown', 'car_model': customer_car or ''}
+                defaults={'name': customer_name or 'Unknown'}
             )
-            if not created and (customer_name or customer_car):
-                if customer_name: customer_obj.name = customer_name
-                if customer_car: customer_obj.car_model = customer_car
-                customer_obj.save()
 
-        # 3. Create Order
+        # 3. إنشاء الطلب
         order = Order.objects.create(
              seller=request.user,
              customer=customer_obj,
@@ -174,69 +225,55 @@ def finalize_order(request):
              vat_amount=vat_amount,
              discount_amount=discount,
              grand_total=grand_total,
-             customer_email=request.POST.get('customer_email', '')
         )
 
-        # 4. Create Sales & Deduct Stock
+        # 4. حفظ المبيعات وخصم المخزون
         for stock_id, qty in cart.items():
             stock = Stock.objects.filter(id=stock_id).first()
             if stock and stock.quantity >= qty:
+                # خصم الكمية
                 stock.quantity -= qty
                 stock.save()
                 
+                # حساب السعر الفعلي بعد الخصم (للدقة في التقارير)
+                discount_factor = (subtotal - discount) / subtotal if subtotal > 0 else 1
+                actual_price = float(stock.part.selling_price) * discount_factor
+
                 Sale.objects.create(
                     order=order,
                     part=stock.part,
                     branch=stock.branch,
                     seller=request.user,
                     quantity=qty,
-                    price_at_sale=stock.part.selling_price,
+                    price_at_sale=actual_price, # السعر الصافي
                     cost_at_sale=stock.part.cost_price
                 )
 
-        request.session['cart'] = {}
+        request.session['cart'] = {} # تفريغ السلة
+        request.session.modified = True
         return redirect('receipt_view', order_id=order.order_id)
 
-    return redirect('cart_view')
+    return redirect('pos_console')
 
 @login_required
 def receipt_view(request, order_id):
     order = get_object_or_404(Order, order_id=order_id)
-    
-    # Calculate the base amount for the receipt label
-    taxable_amount = order.subtotal - order.discount_amount
-    
-    return render(request, 'inventory/receipt.html', {
-        'order': order,
-        'taxable_amount': taxable_amount  # <--- Sending the correct number
-    })
+    return render(request, 'inventory/receipt.html', {'order': order})
+
+# --- 5. REPORTS & TOOLS ---
 
 @login_required
 def order_list(request):
     orders = Order.objects.all().order_by('-created_at')
     return render(request, 'inventory/order_list.html', {'orders': orders})
 
-# --- 3. TOOLS & REPORTS ---
-
 def scanner_view(request):
     return render(request, 'inventory/scanner.html')
 
 @login_required
 def sell_part(request, stock_id):
-    # Legacy quick-sell function (can be kept or removed)
-    stock = get_object_or_404(Stock, id=stock_id)
-    if stock.quantity > 0:
-        Sale.objects.create(
-            part=stock.part,
-            branch=stock.branch,
-            seller=request.user,
-            quantity=1,
-            price_at_sale=stock.part.selling_price,
-            cost_at_sale=stock.part.cost_price
-        )
-        stock.quantity -= 1
-        stock.save()
-    return redirect('part_search')
+    # دالة قديمة للبيع السريع (تحولك للكاشير الآن)
+    return redirect('pos_console')
 
 @login_required
 @user_passes_test(is_manager)
@@ -249,15 +286,14 @@ def sales_history(request):
 
     if start_date and end_date:
         sales_query = sales_query.filter(date_sold__date__range=[start_date, end_date])
-    else:
-        today = timezone.now().date()
-        sales_query = sales_query.filter(date_sold__date=today)
-
+    
     if branch_id:
         sales_query = sales_query.filter(branch_id=branch_id)
 
+    # حساب المجاميع
     total_revenue = sum(s.total_revenue for s in sales_query)
     total_profit = sum(s.total_profit for s in sales_query)
+    
     branches = Stock.objects.values('branch__id', 'branch__name').distinct()
 
     context = {
@@ -265,7 +301,6 @@ def sales_history(request):
         'total_revenue': total_revenue,
         'total_profit': total_profit,
         'branches': branches,
-        'current_branch': int(branch_id) if branch_id else None,
         'start_date': start_date,
         'end_date': end_date
     }
@@ -274,49 +309,23 @@ def sales_history(request):
 @login_required
 @user_passes_test(is_manager)
 def export_sales_csv(request):
-    start_date = request.GET.get('start_date')
-    end_date = request.GET.get('end_date')
-    branch_id = request.GET.get('branch')
-
-    sales_query = Sale.objects.all().order_by('-date_sold')
-    
-    if start_date and end_date:
-        sales_query = sales_query.filter(date_sold__date__range=[start_date, end_date])
-    else:
-        today = timezone.now().date()
-        sales_query = sales_query.filter(date_sold__date=today)
-
-    if branch_id:
-        sales_query = sales_query.filter(branch_id=branch_id)
-
+    # تصدير التقرير كملف CSV
     response = HttpResponse(content_type='text/csv; charset=utf-8')
-    response['Content-Disposition'] = f'attachment; filename="sales_report_{timezone.now().date()}.csv"'
-    response.write(u'\ufeff'.encode('utf8'))
+    response['Content-Disposition'] = f'attachment; filename="sales_{timezone.now().date()}.csv"'
+    response.write(u'\ufeff'.encode('utf8')) # لدعم العربية في Excel
 
     writer = csv.writer(response)
-    header = ['Date', 'Time', 'Order ID', 'Part Name', 'Part Number', 'Branch', 'Seller', 'Quantity', 'Sale Price', 'Cost', 'Profit']
-    writer.writerow(header)
+    writer.writerow(['Date', 'Part', 'Branch', 'Qty', 'Price', 'Total'])
 
-    for sale in sales_query:
-        # Robust calculation
-        revenue = sale.price_at_sale * sale.quantity
-        cost = sale.cost_at_sale * sale.quantity
-        profit = revenue - cost
-        order_id = sale.order.order_id if sale.order else "N/A"
-        branch_name = sale.branch.name if sale.branch else "N/A"
-
+    sales = Sale.objects.all().order_by('-date_sold')
+    for sale in sales:
         writer.writerow([
             sale.date_sold.date(),
-            sale.date_sold.strftime("%H:%M"),
-            order_id,
             sale.part.name,
-            sale.part.part_number,
-            branch_name,
-            sale.seller.username,
+            sale.branch.name if sale.branch else "-",
             sale.quantity,
-            revenue,
-            cost,
-            profit
+            sale.price_at_sale,
+            sale.total_revenue
         ])
 
     return response
@@ -324,15 +333,11 @@ def export_sales_csv(request):
 @login_required
 @user_passes_test(is_manager)
 def low_stock_list(request):
-    low_stock_items = Stock.objects.filter(quantity__lte=10).order_by('quantity')
+    low_stock_items = Stock.objects.filter(quantity__lte=5).order_by('quantity')
     return render(request, 'inventory/low_stock.html', {'low_stock_items': low_stock_items})
 
 def vehicle_catalog(request):
-    # 1. Fetch all vehicles, sorted by Model (A-Z) and Year (Oldest to Newest)
-    # Note: You requested ascending 'year' (1980 -> 2026)
     vehicles = Vehicle.objects.all().order_by('make', 'model', 'year')
-
-    # 2. Group them by Model (e.g., "Patrol": [1980 object, 1981 object...])
     grouped_vehicles = {}
     for v in vehicles:
         if v.model not in grouped_vehicles:
@@ -341,36 +346,4 @@ def vehicle_catalog(request):
 
     return render(request, 'inventory/vehicle_catalog.html', {
         'grouped_vehicles': grouped_vehicles
-    })
-    
-    # In inventory/views.py
-
-def pos_console(request):
-    # 1. Get the current cart
-    cart = request.session.get('cart', {})
-    cart_items = []
-    subtotal = 0
-    total_qty = 0
-
-    # 2. Build the list of items
-    for stock_id, quantity in cart.items():
-        try:
-            stock = Stock.objects.get(id=stock_id)
-            total_price = stock.part.selling_price * quantity
-            subtotal += total_price
-            total_qty += quantity
-            
-            cart_items.append({
-                'stock': stock,
-                'quantity': quantity,
-                'total_price': total_price,
-            })
-        except Stock.DoesNotExist:
-            continue
-
-    # 3. Render the "Console" template
-    return render(request, 'inventory/pos_console.html', {
-        'cart_items': cart_items,
-        'subtotal': subtotal,
-        'cart_total_count': total_qty
     })

@@ -36,8 +36,8 @@
                                         <button type="submit" name="quantity" value="0" class="btn btn-sm btn-outline-danger" title="Remove">🗑️</button>
                                     </form>
                                 </td>
-                                <td>{{ item.unit_price }} SAR</td>
-                                <td class="fw-bold">{{ item.total_price }} SAR</td>
+                                <td>{{ item.unit_price|floatformat:2 }} SAR</td>
+                                <td class="fw-bold">{{ item.total_price|floatformat:2 }} SAR</td>
                             </tr>
                             {% empty %}
                             <tr>
@@ -52,48 +52,55 @@
         </div>
 
         <div class="col-md-4">
-            <form action="{% url 'finalize_order' %}" method="POST">
+            <form action="{% url 'finalize_order' %}" method="POST" id="checkout-form">
                 {% csrf_token %}
                 <div class="card shadow border-0">
                     <div class="card-header bg-dark text-white">
                         <h5 class="mb-0">Payment Details</h5>
                     </div>
                     <div class="card-body">
-                        
+
                         <div class="d-flex justify-content-between mb-2">
                             <span>Subtotal:</span>
-                            <span class="fw-bold"><span id="subtotal-display" data-value="{{ subtotal }}">{{ subtotal }}</span> SAR</span>
-                            <input type="hidden" name="subtotal_input" value="{{ subtotal }}">
+                            <span class="fw-bold">
+                                <span id="subtotal-display" data-value="{{ subtotal|floatformat:2 }}">{{ subtotal|floatformat:2 }}</span> SAR
+                            </span>
                         </div>
+                        <input type="hidden" name="subtotal_input" id="input-subtotal" value="{{ subtotal|floatformat:2 }}">
 
                         <div class="mb-3">
                             <label class="form-label">Discount (SAR)</label>
-                            <input type="number" name="discount" id="discount-input" class="form-control" placeholder="0.00" oninput="updateTotals()">
+                            <input type="number" step="0.01" min="0" name="discount" id="discount-input" class="form-control" placeholder="0.00">
+                            <small class="text-muted">Discount is applied before VAT.</small>
                         </div>
 
                         <div class="d-flex justify-content-between mb-1 text-muted" style="font-size: 0.9em;">
                             <span>VAT Applied on:</span>
-                            <span><span id="taxable-display">{{ subtotal }}</span> SAR</span>
+                            <span><span id="taxable-display">0.00</span> SAR</span>
                         </div>
 
                         <div class="d-flex justify-content-between mb-2 text-muted">
                             <span>VAT (15%):</span>
                             <span><span id="vat-display">0.00</span> SAR</span>
-                            <input type="hidden" name="vat_amount" id="input-vat">
                         </div>
+                        <input type="hidden" name="vat_amount" id="input-vat" value="0.00">
 
                         <hr>
 
                         <div class="d-flex justify-content-between mb-4">
                             <span class="h4">Total:</span>
-                            <span class="h4 text-primary"><span id="total-display">{{ subtotal }}</span> SAR</span>
-                            <input type="hidden" name="grand_total" id="input-total">
+                            <span class="h4 text-primary"><span id="total-display">0.00</span> SAR</span>
                         </div>
+                        <input type="hidden" name="grand_total" id="input-total" value="0.00">
 
                         {% if user.is_superuser %}
                         <div class="alert alert-info py-2 text-center">
                             <small>Estimated Profit:</small><br>
-                            <strong id="profit-display" data-original="{{ estimated_profit }}" class="text-success fs-5">{{ estimated_profit }}</strong> SAR
+                            <strong
+                                id="profit-display"
+                                data-original="{{ estimated_profit|floatformat:2 }}"
+                                class="text-success fs-5"
+                            >{{ estimated_profit|floatformat:2 }}</strong> SAR
                         </div>
                         {% endif %}
 
@@ -127,48 +134,79 @@
 
 {% block scripts %}
 <script>
+(function () {
+    const VAT_RATE = 0.15;
+
+    const subtotalEl = document.getElementById('subtotal-display');
+    const discountEl = document.getElementById('discount-input');
+
+    const taxableEl = document.getElementById('taxable-display');
+    const vatEl = document.getElementById('vat-display');
+    const totalEl = document.getElementById('total-display');
+
+    const inputVat = document.getElementById('input-vat');
+    const inputTotal = document.getElementById('input-total');
+    const inputSubtotal = document.getElementById('input-subtotal');
+
+    const profitEl = document.getElementById('profit-display'); // may be null (non-superuser)
+
+    function toNumber(val) {
+        const n = parseFloat(val);
+        return Number.isFinite(n) ? n : 0;
+    }
+
+    function clamp(n, min, max) {
+        return Math.min(Math.max(n, min), max);
+    }
+
     function updateTotals() {
-        let subtotal = parseFloat(document.getElementById('subtotal-display').dataset.value);
-        let discount = parseFloat(document.getElementById('discount-input').value) || 0;
-        
-        // 1. Calculate Taxable Amount
-        let taxableAmount = subtotal - discount;
-        if (taxableAmount < 0) taxableAmount = 0;
+        const subtotal = toNumber(subtotalEl?.dataset?.value);
+        let discount = toNumber(discountEl?.value);
 
-        // 2. Calculate VAT (15%)
-        let vat = taxableAmount * 0.15;
-        
-        // 3. Grand Total
-        let total = taxableAmount + vat;
+        // clamp discount (0..subtotal)
+        discount = clamp(discount, 0, subtotal);
 
-        // 4. Update UI
-        document.getElementById('taxable-display').innerText = taxableAmount.toFixed(2);
-        document.getElementById('vat-display').innerText = vat.toFixed(2);
-        document.getElementById('total-display').innerText = total.toFixed(2);
-        
-        // 5. Update Hidden Inputs
-        document.getElementById('input-vat').value = vat.toFixed(2);
-        document.getElementById('input-total').value = total.toFixed(2);
+        // if user typed more than subtotal, reflect the clamped value in the input
+        if (discountEl && toNumber(discountEl.value) !== discount && discountEl.value !== "") {
+            discountEl.value = discount.toFixed(2);
+        }
 
-        // 6. PROFIT CALCULATION (FIXED LOGIC)
-        let originalProfit = parseFloat(document.getElementById('profit-display').dataset.original);
-        let newProfit = originalProfit - discount;
-        let profitEl = document.getElementById('profit-display');
-        
-        profitEl.innerText = newProfit.toFixed(2);
-        
-        // --- THIS IS THE FIX ---
-        if (newProfit < 0) {
-            profitEl.classList.remove('text-success');
-            profitEl.classList.add('text-danger');
-        } else {
-            // Turn it back to green if I reduce the discount!
-            profitEl.classList.remove('text-danger');
-            profitEl.classList.add('text-success');
+        const taxable = Math.max(0, subtotal - discount);
+        const vat = taxable * VAT_RATE;
+        const total = taxable + vat;
+
+        taxableEl.innerText = taxable.toFixed(2);
+        vatEl.innerText = vat.toFixed(2);
+        totalEl.innerText = total.toFixed(2);
+
+        inputVat.value = vat.toFixed(2);
+        inputTotal.value = total.toFixed(2);
+        inputSubtotal.value = subtotal.toFixed(2);
+
+        // Profit display (only if exists)
+        if (profitEl) {
+            const originalProfit = toNumber(profitEl.dataset.original);
+            const newProfit = originalProfit - discount;
+            profitEl.innerText = newProfit.toFixed(2);
+
+            if (newProfit < 0) {
+                profitEl.classList.remove('text-success');
+                profitEl.classList.add('text-danger');
+            } else {
+                profitEl.classList.remove('text-danger');
+                profitEl.classList.add('text-success');
+            }
         }
     }
 
-    // Initialize on load
+    // bind
+    if (discountEl) {
+        discountEl.addEventListener('input', updateTotals);
+        discountEl.addEventListener('change', updateTotals);
+    }
+
+    // init
     updateTotals();
+})();
 </script>
 {% endblock %}

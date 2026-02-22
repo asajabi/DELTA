@@ -5,30 +5,26 @@
 
 {% block content %}
 <style>
-    /* === 1. HIDE WEBSITE INTERFACE (The Fix) === */
-    /* This makes the POS take over the whole screen */
-    nav, footer, .alert { display: none !important; } 
-    
-    /* === 2. LAYOUT: Full Screen Workstation === */
-    body { 
-        background-color: #dce1e6; 
-        height: 100vh; 
-        overflow: hidden; /* Stop scrolling */
-        margin: 0; 
+    /* Hide website chrome to make POS feel full screen */
+    nav, footer, .alert { display: none !important; }
+
+    body {
+        background-color: #dce1e6;
+        height: 100vh;
+        overflow: hidden;
+        margin: 0;
         padding: 0;
     }
-    
-    /* Reset main padding because we hid the header */
-    main { 
-        padding: 10px !important; 
-        height: 100vh !important; 
+
+    main {
+        padding: 10px !important;
+        height: 100vh !important;
         max-width: 100% !important;
         margin: 0;
     }
-    
+
     .pos-container { display: flex; gap: 10px; height: 100%; }
 
-    /* === 3. LEFT SIDE: The Active Order === */
     .order-panel {
         flex: 3;
         background: white;
@@ -39,25 +35,24 @@
         box-shadow: 0 0 10px rgba(0,0,0,0.05);
     }
     .order-table-container { flex: 1; overflow-y: auto; }
-    
-    .table-dense th { 
-        background: #2c3e50; 
-        color: white; 
-        padding: 10px; 
-        font-size: 0.9rem; 
-        position: sticky; 
-        top: 0; 
+
+    .table-dense th {
+        background: #2c3e50;
+        color: white;
+        padding: 10px;
+        font-size: 0.9rem;
+        position: sticky;
+        top: 0;
         z-index: 10;
     }
-    .table-dense td { 
-        padding: 8px 10px; 
-        border-bottom: 1px solid #eee; 
-        vertical-align: middle; 
-        font-size: 1rem; 
+    .table-dense td {
+        padding: 8px 10px;
+        border-bottom: 1px solid #eee;
+        vertical-align: middle;
+        font-size: 1rem;
     }
     .table-dense tr:nth-child(even) { background-color: #f8f9fa; }
-    
-    /* === 4. RIGHT SIDE: Controls & Totals === */
+
     .control-panel {
         flex: 1.2;
         display: flex;
@@ -65,7 +60,6 @@
         gap: 10px;
     }
 
-    /* Input Box */
     .scan-box {
         background: #2c3e50;
         padding: 15px;
@@ -84,12 +78,15 @@
         font-weight: bold;
         text-transform: uppercase;
     }
-    .scan-input:focus { outline: none; box-shadow: 0 0 15px rgba(52, 152, 219, 0.8); border-color: #5dade2; }
+    .scan-input:focus {
+        outline: none;
+        box-shadow: 0 0 15px rgba(52, 152, 219, 0.8);
+        border-color: #5dade2;
+    }
 
-    /* Big Totals Display */
     .totals-display {
         background: black;
-        color: #00ff00; /* Green Terminal Text */
+        color: #00ff00;
         font-family: 'Courier New', monospace;
         padding: 30px;
         border-radius: 4px;
@@ -99,14 +96,19 @@
         box-shadow: inset 0 0 15px rgba(0,0,0,0.8);
         border: 2px solid #444;
     }
-    .totals-label { font-size: 0.9rem; color: #aaa; display: block; margin-bottom: 5px; font-family: sans-serif; }
+    .totals-label {
+        font-size: 0.9rem;
+        color: #aaa;
+        display: block;
+        margin-bottom: 5px;
+        font-family: sans-serif;
+    }
 
-    /* Actions */
     .action-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 10px;
-        margin-top: auto; 
+        margin-top: auto;
     }
     .btn-pos {
         height: 70px;
@@ -117,29 +119,29 @@
         border: none;
         cursor: pointer;
         transition: transform 0.1s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none;
     }
     .btn-pos:active { transform: scale(0.98); }
-    
+
     .btn-pay { background: #27ae60; color: white; grid-column: span 2; height: 90px; font-size: 1.8rem; }
     .btn-pay:hover { background: #219150; }
-    
+
     .btn-clear { background: #c0392b; color: white; }
     .btn-clear:hover { background: #a93226; }
-    
+
     .btn-hold { background: #f39c12; color: white; }
     .btn-hold:hover { background: #d68910; }
-    
-    /* Exit Button (Since we hid the navbar) */
-    .exit-btn {
-        text-align: center;
-        margin-top: 10px;
-    }
+
+    .exit-btn { text-align: center; margin-top: 10px; }
     .exit-btn a { color: #7f8c8d; text-decoration: none; font-size: 0.9rem; }
     .exit-btn a:hover { color: #c0392b; }
 </style>
 
 <div class="pos-container">
-    
+
     <div class="order-panel">
         <div class="order-table-container">
             <table class="table table-dense w-100 mb-0">
@@ -163,13 +165,13 @@
                         <td class="text-center">
                             <span class="badge bg-secondary fs-6">{{ item.quantity }}</span>
                         </td>
-                        <td class="text-end">{{ item.stock.part.selling_price }}</td>
-                        <td class="text-end fw-bold">{{ item.total_price }}</td>
+                        <td class="text-end">{{ item.stock.part.selling_price|floatformat:2 }}</td>
+                        <td class="text-end fw-bold">{{ item.total_price|floatformat:2 }}</td>
                         <td class="text-center">
                             <form action="{% url 'update_cart_item' item.stock.id %}" method="POST" style="display:inline;">
                                 {% csrf_token %}
                                 <input type="hidden" name="quantity" value="0">
-                                <button type="submit" class="btn btn-sm text-danger border-0 p-0 fs-5">×</button>
+                                <button type="submit" class="btn btn-sm text-danger border-0 p-0 fs-5" title="Remove">×</button>
                             </form>
                         </td>
                     </tr>
@@ -188,7 +190,7 @@
     </div>
 
     <div class="control-panel">
-        
+
         <div class="scan-box">
             <label class="small text-white-50 mb-1">SCAN ITEM / SEARCH</label>
             <form action="{% url 'part_search' %}" method="GET">
@@ -202,16 +204,24 @@
         </div>
 
         <div class="action-grid">
-<button id="btn-void" class="btn-pos btn-clear">
-    🗑️ Void
-</button>            <button class="btn-pos btn-hold">
+            <!-- VOID = clears cart (POST) -->
+            <form action="{% url 'clear_cart' %}" method="POST">
+                {% csrf_token %}
+                <button type="submit" class="btn-pos btn-clear" onclick="return confirm('Are you sure you want to clear the entire order?');">
+                    🗑️ Void
+                </button>
+            </form>
+
+            <button type="button" class="btn-pos btn-hold" onclick="alert('Hold feature not implemented yet');">
                 ✋ Hold
             </button>
-            <a href="{% url 'finalize_order' %}" class="btn-pos btn-pay d-flex align-items-center justify-content-center text-decoration-none">
+
+            <!-- PAY goes to Checkout page -->
+            <a href="{% url 'cart_view' %}" class="btn-pos btn-pay">
                 💵 PAY
             </a>
         </div>
-        
+
         <div class="exit-btn">
             <a href="{% url 'part_search' %}">← Exit POS Mode (Back to Dashboard)</a>
         </div>
@@ -221,21 +231,13 @@
 <script>
     // Force Focus Logic
     const input = document.getElementById('pos-input');
-    input.focus();
-    
-    // Enterprise Mode: Click anywhere on grey screen -> Focuses input
+    if (input) input.focus();
+
     document.addEventListener('click', function(e) {
-        // Only refocus if they didn't click a button or link
+        if (!input) return;
         if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'A' && e.target.tagName !== 'INPUT') {
             input.focus();
         }
     });
-    // Handle the Void Button
-    document.getElementById('btn-void').addEventListener('click', function() {
-        if (confirm('Are you sure you want to clear the entire order?')) {
-            window.location.href = '{% url "cart_view" %}';
-        }
-    });
 </script>
-
 {% endblock %}
