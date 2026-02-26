@@ -1,0 +1,80 @@
+{% extends 'inventory/base.html' %}
+
+{% block title %}New Transfer Request{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 px-lg-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card delta-card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div>
+                            <h1 class="h4 mb-1">New Transfer Request</h1>
+                            <p class="text-muted mb-0">طلب تحويل جديد بين الفروع</p>
+                        </div>
+                        <a href="{% url 'transfer_list' %}" class="btn btn-outline-secondary">Back</a>
+                    </div>
+
+                    <form method="post" class="row g-3">
+                        {% csrf_token %}
+                        <div class="col-md-6">
+                            <label class="form-label">Part</label>
+                            <select name="part_id" class="form-select" required>
+                                <option value="">Select part</option>
+                                {% for part in parts %}
+                                    <option value="{{ part.id }}">{{ part.part_number }} - {{ part.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Quantity</label>
+                            <input type="number" name="quantity" min="1" class="form-control" required>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Driver (Optional)</label>
+                            <select name="driver_id" class="form-select">
+                                <option value="">-</option>
+                                {% for driver in drivers %}
+                                    <option value="{{ driver.id }}">{{ driver.username }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label">From Branch</label>
+                            {% if is_admin %}
+                                <select name="from_branch" class="form-select" required>
+                                    <option value="">Select source branch</option>
+                                    {% for branch in branches %}
+                                        <option value="{{ branch.id }}">{{ branch.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            {% else %}
+                                <input type="text" class="form-control" value="{{ default_source_branch.name }}" disabled>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">To Branch</label>
+                            <select name="to_branch" class="form-select" required>
+                                <option value="">Select destination branch</option>
+                                {% for branch in branches %}
+                                    <option value="{{ branch.id }}">{{ branch.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Notes</label>
+                            <textarea name="notes" rows="3" class="form-control" placeholder="Optional notes"></textarea>
+                        </div>
+                        <div class="col-12 d-flex gap-2">
+                            <button type="submit" class="btn btn-primary">Create Request</button>
+                            <a href="{% url 'transfer_list' %}" class="btn btn-outline-secondary">Cancel</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -29,11 +29,14 @@
                         <tr>
                             <td><strong>{{ order.order_id }}</strong></td>
                             <td>{{ order.created_at|date:"Y-m-d H:i" }}</td>
-                            <td>{{ order.seller.username }}</td>
+                            <td>
+                                {{ order.seller.username }}
+                                <div class="small text-muted">{{ order.seller.profile.employee_id|default:"-" }}</div>
+                            </td>
                             <td>{{ order.branch.name|default:'-' }}</td>
                             <td>{{ order.grand_total|floatformat:2 }} SAR</td>
                             <td>{{ order.items.count }}</td>
-                            <td><a href="{% url 'receipt_view' order.order_id %}" class="btn btn-sm btn-primary">Receipt</a></td>
+                            <td><a href="{% url 'receipt_view' order.order_id %}" class="btn btn-sm btn-primary">Reprint Receipt</a></td>
                         </tr>
                     {% empty %}
                         <tr><td colspan="7" class="text-center text-muted py-5">No orders found.</td></tr>

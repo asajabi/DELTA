@@ -1,0 +1,85 @@
+{% extends 'inventory/base.html' %}
+
+{% block title %}Driver Tasks{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 px-lg-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h4 mb-0">Driver Workflow Tasks</h1>
+        <a href="{% url 'transfer_list' %}" class="btn btn-outline-secondary">All Transfers</a>
+    </div>
+
+    <div class="card delta-card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Part</th>
+                            <th>Qty</th>
+                            <th>From</th>
+                            <th>To</th>
+                            <th>Status</th>
+                            <th>Driver</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for transfer in transfers %}
+                        <tr>
+                            <td>{{ transfer.id }}</td>
+                            <td>{{ transfer.part.name }} <span class="text-muted small">({{ transfer.part.part_number }})</span></td>
+                            <td>{{ transfer.quantity }}</td>
+                            <td>{{ transfer.source_branch.name }}</td>
+                            <td>{{ transfer.destination_branch.name }}</td>
+                            <td>
+                                {% if transfer.status == 'approved' %}
+                                    <span class="badge text-bg-primary">Approved</span>
+                                {% elif transfer.status == 'picked_up' %}
+                                    <span class="badge text-bg-warning">Picked Up</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ transfer.driver.username|default:'-' }}</td>
+                            <td>
+                                {% if transfer.status == 'approved' %}
+                                    <form method="post" action="{% url 'transfer_mark_picked_up' transfer.id %}" class="d-inline">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                        <input type="text" name="reason" class="form-control form-control-sm mb-1" placeholder="Pickup reason" required>
+                                        <button class="btn btn-sm btn-outline-primary" type="submit">Pickup</button>
+                                    </form>
+                                {% elif transfer.status == 'picked_up' %}
+                                    <form method="post" action="{% url 'transfer_mark_delivered' transfer.id %}" class="d-inline">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                        <input type="text" name="reason" class="form-control form-control-sm mb-1" placeholder="Delivery reason" required>
+                                        <button class="btn btn-sm btn-outline-success" type="submit">Delivered</button>
+                                    </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="8" class="text-center text-muted py-5">No driver tasks right now.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {% if page_obj and page_obj.paginator.num_pages > 1 %}
+        <nav class="mt-4">
+            <ul class="pagination justify-content-center">
+                {% if page_obj.has_previous %}
+                    <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a></li>
+                {% endif %}
+                <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+                {% if page_obj.has_next %}
+                    <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+    {% endif %}
+</div>
+{% endblock %}

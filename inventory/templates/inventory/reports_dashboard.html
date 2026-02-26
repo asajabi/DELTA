@@ -88,6 +88,7 @@
                             <thead>
                                 <tr>
                                     <th>Seller</th>
+                                    <th>Employee ID</th>
                                     <th class="text-end">Orders</th>
                                     <th class="text-end">Qty</th>
                                     <th class="text-end">Revenue</th>
@@ -97,12 +98,13 @@
                             {% for seller in top_sellers %}
                                 <tr>
                                     <td>{{ seller.seller__username }}</td>
+                                    <td>{{ seller.seller__profile__employee_id|default:"-" }}</td>
                                     <td class="text-end">{{ seller.total_sales }}</td>
                                     <td class="text-end">{{ seller.total_qty }}</td>
                                     <td class="text-end">{{ seller.revenue|floatformat:2 }}</td>
                                 </tr>
                             {% empty %}
-                                <tr><td colspan="4" class="text-center text-muted py-4">No data.</td></tr>
+                                <tr><td colspan="5" class="text-center text-muted py-4">No data.</td></tr>
                             {% endfor %}
                             </tbody>
                         </table>

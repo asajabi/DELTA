@@ -1,0 +1,417 @@
+{% extends "inventory/base.html" %}
+
+{% block title %}Stock by Location{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 px-lg-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div>
+            <h1 class="h4 mb-1">Stock by Location</h1>
+            <p class="text-muted mb-0">Add, remove, and move stock between shelves/bins.</p>
+        </div>
+        <a class="btn btn-outline-secondary" href="{% url 'location_list' %}{% if selected_branch %}?branch={{ selected_branch }}{% endif %}">Manage Locations</a>
+    </div>
+
+    <div class="card delta-card mb-3">
+        <div class="card-body">
+            <form id="stock-location-search-form" method="get" class="row g-2 align-items-end">
+                {% if is_admin %}
+                    <div class="col-md-4">
+                        <label class="form-label">Branch</label>
+                        <select name="branch" class="form-select" onchange="this.form.submit()">
+                            <option value="">Select branch</option>
+                            {% for branch in branches %}
+                                <option value="{{ branch.id }}" {% if selected_branch == branch.id %}selected{% endif %}>{{ branch.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                {% endif %}
+                <div class="col-md-4">
+                    <label class="form-label">Search</label>
+                    <div class="input-group">
+                        <input id="stock-location-search-input" type="text" class="form-control" name="q" value="{{ query }}" placeholder="Part number, name, location code">
+                        <button
+                            type="button"
+                            class="btn btn-outline-secondary"
+                            data-barcode-scan-target="#stock-location-search-input"
+                            data-barcode-form="#stock-location-search-form"
+                            data-barcode-auto-submit="true"
+                        >
+                            <i class="fa-solid fa-camera"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="col-md-2 d-grid">
+                    <button class="btn btn-primary" type="submit">Apply</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card delta-card mb-3">
+        <div class="card-body">
+            <form id="stock-scan-form" method="post" action="{% url 'stock_scan_apply' %}" class="row g-2 align-items-end">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="scan">
+                <div class="col-md-5">
+                    <label class="form-label">Scan Barcode / Part Number</label>
+                    <div class="input-group">
+                        <input id="stock-scan-input" type="text" name="scan_code" class="form-control" placeholder="Scan then press Enter" autofocus required>
+                        <button
+                            type="button"
+                            class="btn btn-outline-light"
+                            data-barcode-scan-target="#stock-scan-input"
+                            data-barcode-form="#stock-scan-form"
+                            data-barcode-auto-submit="true"
+                        >
+                            <i class="fa-solid fa-camera"></i> Camera
+                        </button>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Mode</label>
+                    <select name="mode" class="form-select">
+                        <option value="add" {% if scan_mode == 'add' %}selected{% endif %}>Add stock</option>
+                        <option value="remove" {% if scan_mode == 'remove' %}selected{% endif %}>Remove stock</option>
+                        <option value="move" {% if scan_mode == 'move' %}selected{% endif %}>Move stock</option>
+                        <option value="info" {% if scan_mode == 'info' %}selected{% endif %}>Item info</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Qty</label>
+                    <input type="number" name="quantity" min="1" value="{{ scan_qty|default:1 }}" class="form-control">
+                </div>
+                <div class="col-md-2 d-grid">
+                    <button class="btn btn-outline-primary" type="submit">Scan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card delta-card mb-3">
+        <div class="card-body">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                <h2 class="h6 mb-0">Scanned Batch</h2>
+                <div class="small text-muted">Total units: {{ scan_batch_total_qty }}</div>
+            </div>
+            <div class="table-responsive mb-2">
+                <table class="table table-sm align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Part #</th>
+                            <th>Part Name</th>
+                            <th>Qty</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for line in scan_batch_lines %}
+                            <tr>
+                                <td>{{ line.part_number }}</td>
+                                <td>{{ line.part_name }}</td>
+                                <td>{{ line.quantity }}</td>
+                                <td>
+                                    <div class="d-flex justify-content-end gap-1">
+                                        <form method="post" action="{% url 'stock_scan_apply' %}">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="action" value="line_plus">
+                                            <input type="hidden" name="part_id" value="{{ line.part_id }}">
+                                            <button class="btn btn-sm btn-outline-success" type="submit">+</button>
+                                        </form>
+                                        <form method="post" action="{% url 'stock_scan_apply' %}">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="action" value="line_minus">
+                                            <input type="hidden" name="part_id" value="{{ line.part_id }}">
+                                            <button class="btn btn-sm btn-outline-warning" type="submit">-</button>
+                                        </form>
+                                        <form method="post" action="{% url 'stock_scan_apply' %}">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="action" value="line_remove">
+                                            <input type="hidden" name="part_id" value="{{ line.part_id }}">
+                                            <button class="btn btn-sm btn-outline-danger" type="submit">Remove</button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr><td colspan="4" class="text-center text-muted py-3">No scanned items yet.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <form method="post" action="{% url 'stock_scan_apply' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="undo">
+                    <button class="btn btn-sm btn-outline-secondary" type="submit">Undo last scan</button>
+                </form>
+                <form method="post" action="{% url 'stock_scan_apply' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="clear">
+                    <button class="btn btn-sm btn-outline-danger" type="submit">Clear batch</button>
+                </form>
+            </div>
+            <hr>
+            <form method="post" action="{% url 'stock_scan_apply' %}" class="row g-2 align-items-end">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="apply">
+                <div class="col-md-3">
+                    <label class="form-label">Apply Mode</label>
+                    <select name="mode" class="form-select">
+                        <option value="add" {% if scan_mode == 'add' or not scan_mode %}selected{% endif %}>Add stock</option>
+                        <option value="remove" {% if scan_mode == 'remove' %}selected{% endif %}>Remove stock</option>
+                        <option value="move" {% if scan_mode == 'move' %}selected{% endif %}>Move stock</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">From Location</label>
+                    <select name="from_location_id" class="form-select">
+                        <option value="">Select source</option>
+                        {% for location in location_choices %}
+                            <option value="{{ location.id }}">{{ location.code }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">To Location</label>
+                    <select name="to_location_id" class="form-select">
+                        <option value="">Select destination</option>
+                        {% for location in location_choices %}
+                            <option value="{{ location.id }}">{{ location.code }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Reason</label>
+                    <input type="text" name="reason" class="form-control" value="scan_batch_apply" required>
+                </div>
+                <div class="col-12 d-grid">
+                    <button class="btn btn-primary" type="submit">Apply Scanned Batch</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-lg-4">
+            <div class="card delta-card h-100">
+                <div class="card-body">
+                    <h2 class="h6">Add</h2>
+                    <form method="post" class="row g-2">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="add">
+                        {% if selected_branch %}<input type="hidden" name="branch" value="{{ selected_branch }}">{% endif %}
+                        <div class="col-12">
+                            <label class="form-label">Part</label>
+                            <select name="part_id" class="form-select" required>
+                                <option value="">Select part</option>
+                                {% for part in part_choices %}
+                                    <option value="{{ part.id }}" {% if scan_part_id == part.id and scan_mode == 'add' %}selected{% endif %}>{{ part.part_number }} - {{ part.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">To Location</label>
+                            <select name="to_location_id" class="form-select" required>
+                                <option value="">Select location</option>
+                                {% for location in location_choices %}
+                                    <option value="{{ location.id }}">{{ location.code }} - {{ location.name_en|default:location.name_ar|default:"-" }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Qty</label>
+                            <input type="number" class="form-control" name="quantity" min="1" value="{% if scan_mode == 'add' %}{{ scan_qty|default:1 }}{% endif %}" required>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Reason</label>
+                            <input type="text" class="form-control" name="reason" value="{% if scan_mode == 'add' %}{{ scan_reason|default:'scan_add' }}{% endif %}" required>
+                        </div>
+                        <div class="col-12 d-grid mt-1">
+                            <button class="btn btn-success" type="submit">Add Stock</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card delta-card h-100">
+                <div class="card-body">
+                    <h2 class="h6">Remove</h2>
+                    <form method="post" class="row g-2">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="remove">
+                        {% if selected_branch %}<input type="hidden" name="branch" value="{{ selected_branch }}">{% endif %}
+                        <div class="col-12">
+                            <label class="form-label">Part</label>
+                            <select name="part_id" class="form-select" required>
+                                <option value="">Select part</option>
+                                {% for part in part_choices %}
+                                    <option value="{{ part.id }}" {% if scan_part_id == part.id and scan_mode == 'remove' %}selected{% endif %}>{{ part.part_number }} - {{ part.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">From Location</label>
+                            <select name="from_location_id" class="form-select" required>
+                                <option value="">Select location</option>
+                                {% for location in location_choices %}
+                                    <option value="{{ location.id }}">{{ location.code }} - {{ location.name_en|default:location.name_ar|default:"-" }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Qty</label>
+                            <input type="number" class="form-control" name="quantity" min="1" value="{% if scan_mode == 'remove' %}{{ scan_qty|default:1 }}{% endif %}" required>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Reason</label>
+                            <input type="text" class="form-control" name="reason" value="{% if scan_mode == 'remove' %}{{ scan_reason|default:'scan_remove' }}{% endif %}" required>
+                        </div>
+                        <div class="col-12 d-grid mt-1">
+                            <button class="btn btn-warning" type="submit">Remove Stock</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card delta-card h-100">
+                <div class="card-body">
+                    <h2 class="h6">Move</h2>
+                    <form method="post" class="row g-2">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="move">
+                        {% if selected_branch %}<input type="hidden" name="branch" value="{{ selected_branch }}">{% endif %}
+                        <div class="col-12">
+                            <label class="form-label">Part</label>
+                            <select name="part_id" class="form-select" required>
+                                <option value="">Select part</option>
+                                {% for part in part_choices %}
+                                    <option value="{{ part.id }}">{{ part.part_number }} - {{ part.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">From</label>
+                            <select name="from_location_id" class="form-select" required>
+                                <option value="">From</option>
+                                {% for location in location_choices %}
+                                    <option value="{{ location.id }}">{{ location.code }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">To</label>
+                            <select name="to_location_id" class="form-select" required>
+                                <option value="">To</option>
+                                {% for location in location_choices %}
+                                    <option value="{{ location.id }}">{{ location.code }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Qty</label>
+                            <input type="number" class="form-control" name="quantity" min="1" required>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Reason</label>
+                            <input type="text" class="form-control" name="reason" required>
+                        </div>
+                        <div class="col-12 d-grid mt-1">
+                            <button class="btn btn-primary" type="submit">Move Stock</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-lg-7">
+            <div class="card delta-card h-100">
+                <div class="card-body">
+                    <h2 class="h6 mb-2">Current Stock by Location</h2>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Part #</th>
+                                    <th>Part Name</th>
+                                    <th>Location</th>
+                                    <th>Qty</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in stock_rows %}
+                                    <tr>
+                                        <td>{{ row.part.part_number }}</td>
+                                        <td>{{ row.part.name }}</td>
+                                        <td><code>{{ row.location.code }}</code></td>
+                                        <td>{{ row.quantity }}</td>
+                                    </tr>
+                                {% empty %}
+                                    <tr><td colspan="4" class="text-center text-muted py-4">No stock locations found.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-5">
+            <div class="card delta-card h-100">
+                <div class="card-body">
+                    <h2 class="h6 mb-2">Recent Movements</h2>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Action</th>
+                                    <th>Part</th>
+                                    <th>Qty</th>
+                                    <th>From → To</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for movement in movements %}
+                                    <tr>
+                                        <td class="small">{{ movement.created_at|date:"Y-m-d H:i" }}</td>
+                                        <td><span class="badge text-bg-secondary">{{ movement.action }}</span></td>
+                                        <td>{{ movement.part.part_number }}</td>
+                                        <td>{{ movement.qty }}</td>
+                                        <td class="small">
+                                            {{ movement.from_location.code|default:"-" }}
+                                            →
+                                            {{ movement.to_location.code|default:"-" }}
+                                            <div class="text-muted">{{ movement.reason }}</div>
+                                        </td>
+                                    </tr>
+                                {% empty %}
+                                    <tr><td colspan="5" class="text-center text-muted py-4">No movement logs yet.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    const scanForm = document.getElementById('stock-scan-form');
+    const scanInput = document.getElementById('stock-scan-input');
+    if (window.deltaAttachRepeatGuard && scanForm && scanInput) {
+        window.deltaAttachRepeatGuard(scanForm, scanInput);
+    }
+})();
+</script>
+{% endblock %}

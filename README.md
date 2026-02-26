@@ -4,13 +4,16 @@ Production-oriented Django POS and inventory system for multi-branch auto parts 
 
 ## Features
 - Role-aware access model (`admin`, `manager`, `cashier`) via `UserProfile`
-- Branch-scoped inventory and sales visibility for non-manager users
-- Transaction-safe checkout with stock locking and negative-stock prevention
-- Paginated order/sales/low-stock pages with query optimizations
-- Secure sales export (CSV with UTF-8 BOM for Arabic Excel + optional XLSX)
-- Manager-only refund workflow with automatic stock restock
-- Arabic-first UI with RTL-ready base layout and keyboard-friendly POS workflow
-- Automated tests for auth/permissions, checkout, branch isolation, and exports
+- Branch-scoped inventory and sales visibility
+- Active-branch enforcement for write operations (checkout/stock/transfers)
+- Transaction-safe checkout and stock movements (`atomic` + row locking)
+- Location/bin-aware stock tracking with movement history
+- Reservation-aware transfer workflow
+- Refund workflow with audit trail and idempotency
+- Tech-support ticket workflow (create/list/detail, assignment, priority, screenshot)
+- Role-restricted AI assistant for stock and transfer actions
+- UTF-8 BOM CSV export (Excel-friendly Arabic)
+- Arabic-first RTL UI
 
 ## Quick Start
 1. Create and activate a virtual environment.
@@ -45,21 +48,78 @@ Use `.env.example` as reference.
 - `DJANGO_SECURE_COOKIES`
 - `DJANGO_SECURE_SSL_REDIRECT`
 - `DJANGO_LOG_LEVEL`
+- `DJANGO_DB_ENGINE` (optional: `sqlite3`, `postgresql`, `mysql`)
+- `DJANGO_DB_NAME`, `DJANGO_DB_USER`, `DJANGO_DB_PASSWORD`, `DJANGO_DB_HOST`, `DJANGO_DB_PORT` (when not using sqlite)
+- `DJANGO_DB_COLLATION` (optional MySQL/MariaDB collation, default `utf8mb4_unicode_ci`)
 
-## Assign User Roles / Branches
-Use Django admin (`/admin`) and edit `UserProfile`:
-- `role`: `admin`, `manager`, or `cashier`
-- `branch`: default branch scope for non-manager users
+## Seed Global Admin Accounts
+```bash
+python manage.py seed_global_admins
+```
 
-Admin bulk actions on `UserProfile` support:
-- quick role assignment (`admin`, `manager`, `cashier`),
-- assign selected users to a branch,
-- clear selected branch assignments.
+The command prompts for each password interactively:
+- `saleh` (صالح الجابري) -> `فرع الجمعية`
+- `osama` (أسامة الجابري) -> `فرع مخرج 18`
+- `abdulaziz` (عبدالعزيز الجابري) -> `فرع الصناعية القديمة`
 
-## Refund Workflow
-- Refund actions are manager-only and available from Sales History.
-- Refunding a sale marks `is_refunded=True` and restores sold quantity back to inventory.
-- Re-running refund on the same sale is idempotent (no double restock).
+## Arabic UTF-8 Checklist
+- Templates: keep `<meta charset="utf-8">` in base template.
+- CSV exports: UTF-8 BOM is already enabled.
+- SQLite: Unicode-safe by default (current local engine).
+- PostgreSQL (prod): database encoding must be `UTF8`.
+- MySQL/MariaDB (prod): use `utf8mb4` + `utf8mb4_unicode_ci` and connection charset `utf8mb4`.
+- Django DB settings are configured to enforce:
+  - MySQL/MariaDB: `charset=utf8mb4` + init command `SET NAMES utf8mb4 COLLATE ...`
+  - PostgreSQL: connection option `client_encoding=UTF8`
+
+## Branch Cleanup Commands
+Dry-run first, then apply:
+```bash
+python manage.py delta_cleanup_garbled_arabic
+python manage.py delta_cleanup_branches
+python manage.py delta_cleanup_garbled_arabic --apply
+python manage.py delta_cleanup_branches --apply
+```
+
+Target business branches after cleanup:
+- الصناعية القديمة
+- مخرج 18
+- شارع الجمعية
+
+## User Password Helper (DBP02 / DBP03)
+```bash
+python manage.py set_branch_user_passwords --generate
+```
+Or set explicit values:
+```bash
+python manage.py set_branch_user_passwords --dbp02-password "Dbp02#Pass1" --dbp03-password "Dbp03#Pass1"
+```
+
+## Realistic Inventory Seed
+Dry-run:
+```bash
+python manage.py seed_realistic_inventory
+```
+Apply:
+```bash
+python manage.py seed_realistic_inventory --apply
+```
+Reset and reseed:
+```bash
+python manage.py seed_realistic_inventory --apply --reset
+```
+
+## Scanner Notes
+- Camera scanning requires HTTPS in browsers (or `localhost` for local dev).
+- Hardware scanner mode works via focused barcode input + Enter.
+- The camera scanner is loaded locally from `static/vendor/barcode/html5-qrcode.min.js` (no runtime CDN dependency).
+
+## Role Enforcement (Custom App)
+- Admin: all operations.
+- Manager: reports, stock/location operations, transfer approvals, refunds.
+- Cashier: POS + transfer request creation.
+- Tech support: ticket management (`abdullah`, superuser, or `tech/support` group).
+- Important: custom web views enforce role checks server-side; Django admin model permissions alone are not sufficient.
 
 ## Tests
 Run the suite with:
@@ -72,19 +132,27 @@ python manage.py test
 - CSV rows are sanitized to reduce formula-injection risk.
 - XLSX export is available from the same endpoint using `?format=xlsx` when `openpyxl` is installed.
 
-## Deployment Notes (Gunicorn + WhiteNoise)
-Typical production stack:
-1. Set `DJANGO_DEBUG=False`
-2. Configure secure hosts (`DJANGO_ALLOWED_HOSTS`)
-3. Enable secure cookies (`DJANGO_SECURE_COOKIES=True`)
-4. Run static collection:
-```bash
-python manage.py collectstatic --noinput
-```
-5. Run app server:
-```bash
-gunicorn config.wsgi:application --bind 0.0.0.0:8000
-```
-6. Serve behind reverse proxy (Nginx/Caddy) with HTTPS.
+## Pre-Deploy Checklist
+- `DEBUG` off: set `DJANGO_DEBUG=False`
+- `ALLOWED_HOSTS`: set `DJANGO_ALLOWED_HOSTS` for your production domain(s)
+- `SECRET_KEY` from environment: set `DJANGO_SECRET_KEY` (do not hardcode)
+- `CSRF_TRUSTED_ORIGINS`: set `DJANGO_CSRF_TRUSTED_ORIGINS` with full HTTPS origins
+- WhiteNoise/static:
+  - keep `whitenoise` in dependencies
+  - ensure WhiteNoise middleware is enabled
+  - run `python manage.py collectstatic --noinput`
+- Gunicorn start command:
+  - `gunicorn config.wsgi:application --bind 0.0.0.0:$PORT`
 
-If you use WhiteNoise, add it to dependencies and middleware for static file serving in production.
+## Render Deployment (Minimal)
+This repo includes `render.yaml` for a basic web service setup.
+
+1. Push repository to GitHub.
+2. In Render, create a **Blueprint** deployment from the repo.
+3. Create or attach a PostgreSQL database and set `DATABASE_URL`.
+4. Confirm env vars:
+   - `DJANGO_DEBUG=False`
+   - `DJANGO_SECRET_KEY` (generated secret)
+   - `DJANGO_ALLOWED_HOSTS=.onrender.com`
+   - `DJANGO_CSRF_TRUSTED_ORIGINS=https://*.onrender.com`
+5. Deploy and verify static files, migrations, and app boot.

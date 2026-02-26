@@ -1,0 +1,52 @@
+﻿{% extends 'inventory/base.html' %}
+
+{% block title %}تذكرة جديدة{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 px-lg-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h4 mb-0">تذكرة جديدة</h1>
+        <a href="{% url 'ticket_list' %}" class="btn btn-outline-secondary">العودة</a>
+    </div>
+
+    <div class="card delta-card">
+        <div class="card-body">
+            <form method="post" class="row g-3" enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="col-12">
+                    <label class="form-label">العنوان</label>
+                    <input type="text" name="title" class="form-control" maxlength="200" required>
+                </div>
+                <div class="col-12">
+                    <label class="form-label">الوصف</label>
+                    <textarea name="description" class="form-control" rows="6" required></textarea>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">الأولوية</label>
+                    <select name="priority" class="form-select">
+                        {% for value, label in priority_choices %}
+                            <option value="{{ value }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">الفرع</label>
+                    <select name="branch" class="form-select">
+                        <option value="">الفرع الافتراضي</option>
+                        {% for branch in branch_choices %}
+                            <option value="{{ branch.id }}" {% if default_branch_id == branch.id %}selected{% endif %}>{{ branch.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">مرفق (اختياري)</label>
+                    <input type="file" name="screenshot" class="form-control" accept="image/*,.pdf,.txt,.log">
+                </div>
+                <div class="col-12 d-grid">
+                    <button type="submit" class="btn btn-primary">إرسال التذكرة</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

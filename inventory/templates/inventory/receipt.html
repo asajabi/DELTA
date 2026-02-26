@@ -206,6 +206,13 @@
           Walk-in Client
         {% endif %}
         <br>
+        <strong>Phone:</strong>
+        {% if order.customer and order.customer.phone_number %}
+          {{ order.customer.phone_number }}
+        {% else %}
+          -
+        {% endif %}
+        <br>
         {% if order.customer.car_model and order.customer.car_model != "0" %}
           <small>{{ order.customer.car_model }}</small>
         {% endif %}
@@ -263,7 +270,11 @@
 
       <div class="signatures">
         <div class="sig-box">Received By / المستلم</div>
-        <div class="sig-box">Salesman: {{ order.seller.username|default:"Admin" }}</div>
+        <div class="sig-box">
+          Salesman: {{ order.seller.username|default:"Admin" }}
+          <br>
+          Employee ID: {{ order.seller.profile.employee_id|default:"N/A" }}
+        </div>
       </div>
 
       <div class="bottom-address">
@@ -275,7 +286,7 @@
 </div>
 
 <div class="text-center no-print mt-3 mb-5">
-  <button onclick="window.print()" class="btn btn-primary btn-lg shadow px-5">PRINT NOW</button>
+  <button onclick="window.print()" class="btn btn-primary btn-lg shadow px-5">PRINT / REPRINT</button>
   <a href="{% url 'part_search' %}" class="btn btn-outline-dark btn-lg ms-2">GO BACK</a>
 </div>
 {% endblock %}

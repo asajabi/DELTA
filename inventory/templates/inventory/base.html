@@ -8,6 +8,9 @@
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
         :root {
             --delta-blue: #0f3d66;
@@ -22,6 +25,7 @@
             color: var(--delta-dark);
             display: flex;
             flex-direction: column;
+            font-family: "Tajawal", "Noto Sans Arabic", "Segoe UI", sans-serif;
         }
 
         main {
@@ -35,6 +39,56 @@
         .navbar-brand {
             font-weight: 700;
             letter-spacing: 0.5px;
+        }
+
+        .delta-menu-btn {
+            border-radius: 0.6rem;
+            min-width: 2.25rem;
+        }
+
+        .delta-nav-panel {
+            background: linear-gradient(180deg, var(--delta-blue), #145389);
+            width: min(320px, 88vw);
+        }
+
+        .delta-nav-link {
+            color: #e8edf6;
+            border-radius: 0.5rem;
+            padding: 0.55rem 0.75rem;
+            transition: background-color 0.15s ease;
+        }
+
+        .delta-nav-link:hover,
+        .delta-nav-link:focus {
+            color: #ffffff;
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        .barcode-scanner-modal .modal-content {
+            background: #0b1220;
+            color: #e5e7eb;
+            border-radius: 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+        }
+
+        .barcode-scanner-modal .modal-header,
+        .barcode-scanner-modal .modal-footer {
+            border-color: rgba(255, 255, 255, 0.12);
+        }
+
+        .barcode-scanner-video-wrap {
+            background: #020617;
+            border-radius: 0.85rem;
+            padding: 0.35rem;
+        }
+
+        .barcode-scanner-video {
+            width: 100%;
+            min-height: 240px;
+            max-height: 62vh;
+            object-fit: cover;
+            border-radius: 0.65rem;
+            background: #000;
         }
 
         .content-shell {
@@ -74,39 +128,138 @@
 <body>
 <nav class="navbar navbar-expand-lg navbar-dark shadow-sm">
     <div class="container-fluid px-3 px-lg-4">
-        <a class="navbar-brand" href="{% url 'part_search' %}">
-            <i class="fa-solid fa-gear"></i>
-            DELTA POS
-        </a>
-
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav" aria-controls="mainNav" aria-expanded="false" aria-label="Toggle navigation">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-
-        <div class="collapse navbar-collapse" id="mainNav">
+        <div class="d-flex align-items-center gap-2">
+            <a class="navbar-brand mb-0" href="{% url 'part_search' %}">
+                <i class="fa-solid fa-gear"></i>
+                DELTA POS
+            </a>
             {% if user.is_authenticated %}
-                <ul class="navbar-nav ms-auto mb-2 mb-lg-0 align-items-lg-center gap-lg-2">
-                    <li class="nav-item"><a class="nav-link" href="{% url 'part_search' %}">البحث</a></li>
-                    <li class="nav-item"><a class="nav-link" href="{% url 'pos_console' %}">نقطة البيع</a></li>
-                    <li class="nav-item"><a class="nav-link" href="{% url 'order_list' %}">الطلبات</a></li>
-                    {% if nav_is_manager %}
-                        <li class="nav-item"><a class="nav-link" href="{% url 'reports_dashboard' %}">التقارير</a></li>
-                    {% endif %}
-                    <li class="nav-item text-light small px-2">
-                        <i class="fa-regular fa-user"></i>
-                        {{ user.username }}
-                    </li>
-                    <li class="nav-item">
-                        <form method="post" action="{% url 'logout' %}" class="m-0">
-                            {% csrf_token %}
-                            <button class="btn btn-sm btn-outline-light" type="submit">تسجيل الخروج</button>
-                        </form>
-                    </li>
-                </ul>
+                <button
+                    id="deltaMenuToggle"
+                    class="btn btn-sm btn-outline-light delta-menu-btn"
+                    type="button"
+                    aria-controls="deltaNavPanel"
+                    aria-expanded="false"
+                    aria-label="Toggle navigation menu"
+                >
+                    <i class="fa-solid fa-bars"></i>
+                </button>
             {% endif %}
         </div>
+
+        {% if user.is_authenticated %}
+            <div class="ms-auto d-flex align-items-center justify-content-end flex-wrap gap-2">
+                <span class="text-light small px-1">
+                    الفرع النشط:
+                    <strong>{{ nav_active_branch.name|default:"غير محدد" }}</strong>
+                </span>
+                {% if nav_is_admin %}
+                    <form method="post" action="{% url 'set_active_branch' %}" class="d-flex align-items-center gap-1 m-0">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                        <select name="active_branch" class="form-select form-select-sm">
+                            <option value="">غير محدد</option>
+                            {% for branch in nav_branch_options %}
+                                <option value="{{ branch.id }}" {% if nav_active_branch and nav_active_branch.id == branch.id %}selected{% endif %}>{{ branch.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <button class="btn btn-sm btn-outline-light" type="submit">تغيير</button>
+                    </form>
+                {% endif %}
+                <span class="text-light small px-1">
+                    <i class="fa-regular fa-user"></i>
+                    {{ user.username }}
+                </span>
+                <form method="post" action="{% url 'logout' %}" class="m-0">
+                    {% csrf_token %}
+                    <button class="btn btn-sm btn-outline-light" type="submit">تسجيل الخروج</button>
+                </form>
+            </div>
+        {% endif %}
     </div>
 </nav>
+
+{% if user.is_authenticated %}
+    <div class="offcanvas offcanvas-start delta-nav-panel text-bg-dark" tabindex="-1" id="deltaNavPanel" aria-labelledby="deltaNavPanelLabel">
+        <div class="offcanvas-header border-bottom border-light border-opacity-25">
+            <h5 class="offcanvas-title" id="deltaNavPanelLabel">القائمة</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+        </div>
+        <div class="offcanvas-body">
+            {% with current_url=request.resolver_match.url_name %}
+                <ul class="nav flex-column gap-1">
+                    <li class="nav-item">
+                        <a class="nav-link delta-nav-link {% if current_url == 'part_search' %}active{% endif %}" href="{% url 'part_search' %}" {% if current_url == 'part_search' %}aria-current="page"{% endif %}>البحث</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link delta-nav-link {% if current_url == 'pos_console' or current_url == 'cart_view' %}active{% endif %}" href="{% url 'pos_console' %}" {% if current_url == 'pos_console' or current_url == 'cart_view' %}aria-current="page"{% endif %}>نقطة البيع</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link delta-nav-link {% if current_url == 'order_list' or current_url == 'receipt_view' %}active{% endif %}" href="{% url 'order_list' %}" {% if current_url == 'order_list' or current_url == 'receipt_view' %}aria-current="page"{% endif %}>الطلبات</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link delta-nav-link {% if current_url == 'transfer_list' or current_url == 'transfer_create_from_stock' or current_url == 'transfer_approvals' or current_url == 'transfer_driver_tasks' or current_url == 'transfer_receive_list' %}active{% endif %}" href="{% url 'transfer_list' %}" {% if current_url == 'transfer_list' or current_url == 'transfer_create_from_stock' or current_url == 'transfer_approvals' or current_url == 'transfer_driver_tasks' or current_url == 'transfer_receive_list' %}aria-current="page"{% endif %}>التحويلات</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link delta-nav-link {% if current_url == 'ticket_list' or current_url == 'ticket_create' or current_url == 'ticket_detail' %}active{% endif %}" href="{% url 'ticket_list' %}" {% if current_url == 'ticket_list' or current_url == 'ticket_create' or current_url == 'ticket_detail' %}aria-current="page"{% endif %}>الدعم الفني</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link delta-nav-link {% if current_url == 'analytics_assistant' or current_url == 'chat_assistant' %}active{% endif %}" href="{% url 'analytics_assistant' %}" {% if current_url == 'analytics_assistant' or current_url == 'chat_assistant' %}aria-current="page"{% endif %}>Chat Assistant</a>
+                    </li>
+                    {% if nav_is_manager %}
+                        <li class="nav-item">
+                            <a class="nav-link delta-nav-link {% if current_url == 'reports_dashboard' or current_url == 'sales_history' %}active{% endif %}" href="{% url 'reports_dashboard' %}" {% if current_url == 'reports_dashboard' or current_url == 'sales_history' %}aria-current="page"{% endif %}>التقارير</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link delta-nav-link {% if current_url == 'low_stock_list' %}active{% endif %}" href="{% url 'low_stock_list' %}" {% if current_url == 'low_stock_list' %}aria-current="page"{% endif %}>
+                                تنبيه المخزون
+                                {% if nav_low_stock_count %}
+                                    <span class="badge text-bg-danger">{{ nav_low_stock_count }}</span>
+                                {% endif %}
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link delta-nav-link {% if current_url == 'location_list' %}active{% endif %}" href="{% url 'location_list' %}" {% if current_url == 'location_list' %}aria-current="page"{% endif %}>المواقع</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link delta-nav-link {% if current_url == 'stock_locations_view' or current_url == 'stock_by_location' %}active{% endif %}" href="{% url 'stock_locations_view' %}" {% if current_url == 'stock_locations_view' or current_url == 'stock_by_location' %}aria-current="page"{% endif %}>Stock by Location</a>
+                        </li>
+                    {% endif %}
+                    {% if nav_is_admin %}
+                        <li class="nav-item">
+                            <a class="nav-link delta-nav-link {% if current_url == 'audit_log_list' %}active{% endif %}" href="{% url 'audit_log_list' %}" {% if current_url == 'audit_log_list' %}aria-current="page"{% endif %}>Audit</a>
+                        </li>
+                    {% endif %}
+                </ul>
+            {% endwith %}
+        </div>
+    </div>
+{% endif %}
+
+{% if user.is_authenticated %}
+    <div class="modal fade barcode-scanner-modal" id="barcodeScannerModal" tabindex="-1" aria-labelledby="barcodeScannerTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="barcodeScannerTitle">Barcode Scanner</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="barcode-scanner-video-wrap mb-2">
+                        <div id="barcodeScannerContainer" class="barcode-scanner-video"></div>
+                    </div>
+                    <p id="barcodeScannerStatus" class="small text-light-emphasis mb-0">
+                        افتح الكاميرا ووجّهها نحو الباركود.
+                    </p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-info" data-barcode-camera-switch>Switch Camera</button>
+                    <button type="button" class="btn btn-outline-light" data-barcode-camera-close>Close Camera</button>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endif %}
 
 <main>
     {% if messages %}
@@ -133,6 +286,38 @@
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+{% if user.is_authenticated %}
+<script src="{% static 'vendor/barcode/html5-qrcode.min.js' %}" data-barcode-lib></script>
+<script src="{% static 'js/barcode_scanner.js' %}"></script>
+{% endif %}
+<script>
+(function () {
+    const toggleButton = document.getElementById('deltaMenuToggle');
+    const panelElement = document.getElementById('deltaNavPanel');
+    if (!toggleButton || !panelElement || !window.bootstrap) return;
+
+    const offcanvas = window.bootstrap.Offcanvas.getOrCreateInstance(panelElement);
+    toggleButton.addEventListener('click', function () {
+        offcanvas.toggle();
+    });
+    panelElement.querySelectorAll('a.nav-link[href]').forEach(function (link) {
+        link.addEventListener('click', function (event) {
+            const href = (link.getAttribute('href') || '').trim();
+            if (!href || href === '#' || href.toLowerCase().startsWith('javascript:')) return;
+            event.preventDefault();
+            offcanvas.hide();
+            window.location.assign(href);
+        });
+    });
+    panelElement.addEventListener('shown.bs.offcanvas', function () {
+        toggleButton.setAttribute('aria-expanded', 'true');
+    });
+    panelElement.addEventListener('hidden.bs.offcanvas', function () {
+        toggleButton.setAttribute('aria-expanded', 'false');
+    });
+})();
+</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>
+

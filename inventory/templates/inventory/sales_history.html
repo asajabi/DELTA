@@ -84,7 +84,10 @@
                                 {% if sale.part %}<div class="small text-muted">{{ sale.part.part_number }}</div>{% endif %}
                             </td>
                             <td>{{ sale.branch.name|default:'-' }}</td>
-                            <td>{{ sale.seller.username }}</td>
+                            <td>
+                                {{ sale.seller.username }}
+                                <div class="small text-muted">{{ sale.seller.profile.employee_id|default:"-" }}</div>
+                            </td>
                             <td>
                                 {% if sale.is_refunded %}
                                     <span class="badge text-bg-danger">Refunded</span>
@@ -100,10 +103,14 @@
                                     <form method="post" action="{% url 'refund_sale' sale.id %}" onsubmit="return confirm('Confirm refund for this sale?');">
                                         {% csrf_token %}
                                         <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                        <input type="text" name="reason" class="form-control form-control-sm mb-1" placeholder="Refund reason" required>
                                         <button class="btn btn-sm btn-outline-danger">Refund</button>
                                     </form>
                                 {% else %}
                                     <span class="text-muted small">N/A</span>
+                                {% endif %}
+                                {% if sale.order %}
+                                    <a class="btn btn-sm btn-outline-primary mt-1" href="{% url 'receipt_view' sale.order.order_id %}">Reprint</a>
                                 {% endif %}
                             </td>
                         </tr>

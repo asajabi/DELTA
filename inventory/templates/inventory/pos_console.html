@@ -58,10 +58,52 @@
         <div class="vstack gap-3">
             <div class="card delta-card">
                 <div class="card-body">
-                    <form method="get" class="row g-2 align-items-end">
+                    <form id="pos-quick-scan-form" method="post" action="{% url 'scan_dispatch' %}" class="row g-2 align-items-end mb-3">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="scan">
+                        <input type="hidden" name="mode" value="pos">
+                        <input type="hidden" name="next" value="{% url 'pos_console' %}">
+                        <div class="col-md-7">
+                            <label class="form-label">Quick Scan (Auto add to cart)</label>
+                            <div class="input-group">
+                                <input id="pos-scan-input" type="text" name="scan_code" class="form-control search-input" autocomplete="off" autofocus placeholder="Scan barcode / part number then Enter">
+                                <button
+                                    type="button"
+                                    class="btn btn-outline-light"
+                                    data-barcode-scan-target="#pos-scan-input"
+                                    data-barcode-form="#pos-quick-scan-form"
+                                    data-barcode-auto-submit="true"
+                                >
+                                    <i class="fa-solid fa-camera"></i> Camera
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Qty</label>
+                            <input type="number" name="quantity" min="1" value="1" class="form-control">
+                        </div>
+                        <div class="col-md-1 d-grid">
+                            <button class="btn btn-outline-success" type="submit">Scan Add</button>
+                        </div>
+                        <div class="col-md-2 d-grid">
+                            <button class="btn btn-outline-secondary" type="submit" formaction="{% url 'scan_dispatch' %}" name="action" value="undo">Undo Scan</button>
+                        </div>
+                    </form>
+                    <form id="pos-search-form" method="get" class="row g-2 align-items-end">
                         <div class="col-md-9">
                             <label class="form-label">Scan / Search</label>
-                            <input id="pos-input" type="text" name="q" value="{{ query }}" class="form-control search-input" autocomplete="off" autofocus placeholder="Barcode / Part name / Part number">
+                            <div class="input-group">
+                                <input id="pos-input" type="text" name="q" value="{{ query }}" class="form-control search-input" autocomplete="off" placeholder="Barcode / Part name / Part number">
+                                <button
+                                    type="button"
+                                    class="btn btn-outline-secondary"
+                                    data-barcode-scan-target="#pos-input"
+                                    data-barcode-form="#pos-search-form"
+                                    data-barcode-auto-submit="true"
+                                >
+                                    <i class="fa-solid fa-camera"></i>
+                                </button>
+                            </div>
                         </div>
                         <div class="col-md-3 d-grid">
                             <button class="btn btn-primary" type="submit"><i class="fa-solid fa-magnifying-glass"></i> بحث</button>
@@ -173,9 +215,14 @@
 (function () {
     const searchInput = document.getElementById('pos-input');
     const payBtn = document.getElementById('pay-btn');
+    const quickScanForm = document.getElementById('pos-quick-scan-form');
+    const quickScanInput = document.getElementById('pos-scan-input');
 
     if (searchInput) {
         searchInput.focus();
+    }
+    if (window.deltaAttachRepeatGuard && quickScanForm && quickScanInput) {
+        window.deltaAttachRepeatGuard(quickScanForm, quickScanInput);
     }
 
     document.addEventListener('keydown', (event) => {

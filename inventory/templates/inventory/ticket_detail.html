@@ -1,0 +1,69 @@
+﻿{% extends 'inventory/base.html' %}
+
+{% block title %}تفاصيل التذكرة{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 px-lg-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h1 class="h4 mb-1">تذكرة #{{ ticket.id }}</h1>
+            <p class="text-muted mb-0">{{ ticket.title }}</p>
+        </div>
+        <a href="{% url 'ticket_list' %}" class="btn btn-outline-secondary">العودة</a>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-lg-7">
+            <div class="card delta-card h-100">
+                <div class="card-body">
+                    <h2 class="h6">الوصف</h2>
+                    <p class="mb-3">{{ ticket.description|linebreaksbr }}</p>
+                    {% if ticket.screenshot %}
+                        <a class="btn btn-sm btn-outline-primary" href="{{ ticket.screenshot.url }}" target="_blank" rel="noopener">عرض المرفق</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-5">
+            <div class="card delta-card h-100">
+                <div class="card-body">
+                    <dl class="row mb-3">
+                        <dt class="col-5">الحالة</dt>
+                        <dd class="col-7">{{ ticket.get_status_display }}</dd>
+                        <dt class="col-5">الأولوية</dt>
+                        <dd class="col-7">{{ ticket.get_priority_display }}</dd>
+                        <dt class="col-5">الفرع</dt>
+                        <dd class="col-7">{{ ticket.branch.name|default:'-' }}</dd>
+                        <dt class="col-5">الرافع</dt>
+                        <dd class="col-7">{{ ticket.reporter.username }}</dd>
+                        <dt class="col-5">المسؤول</dt>
+                        <dd class="col-7">{{ ticket.assignee.username|default:'-' }}</dd>
+                        <dt class="col-5">تم الإنشاء</dt>
+                        <dd class="col-7">{{ ticket.created_at|date:"Y-m-d H:i" }}</dd>
+                        <dt class="col-5">آخر تحديث</dt>
+                        <dd class="col-7">{{ ticket.updated_at|date:"Y-m-d H:i" }}</dd>
+                    </dl>
+
+                    {% if is_tech_user %}
+                        <form method="post" class="vstack gap-2">
+                            {% csrf_token %}
+                            <label class="form-label mb-0">تحديث الحالة</label>
+                            <select name="status" class="form-select">
+                                {% for value, label in status_choices %}
+                                    <option value="{{ value }}" {% if ticket.status == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                            <label class="form-label mb-0">ملاحظات داخلية</label>
+                            <textarea name="internal_notes" class="form-control" rows="5">{{ ticket.internal_notes }}</textarea>
+                            <button type="submit" class="btn btn-primary">حفظ</button>
+                        </form>
+                    {% elif ticket.internal_notes %}
+                        <div class="alert alert-light border mb-0">هذه التذكرة قيد المعالجة من الدعم الفني.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

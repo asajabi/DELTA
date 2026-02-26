@@ -31,16 +31,27 @@
         <div class="col-lg-8">
             <div class="card delta-card h-100">
                 <div class="card-body">
-                    <form method="get" class="row g-2 align-items-end">
-                        <div class="col-md-7">
+                    <form id="part-search-form" method="get" class="row g-2 align-items-end">
+                        <div class="col-md-6">
                             <label class="form-label">بحث سريع</label>
-                            <input type="text" name="q" value="{{ query }}" class="form-control" placeholder="Part name / رقم القطعة / Barcode" autocomplete="off">
+                            <div class="input-group">
+                                <input id="part-search-input" type="text" name="q" value="{{ query }}" class="form-control" placeholder="Part name / رقم القطعة / Barcode" autocomplete="off">
+                                <button
+                                    type="button"
+                                    class="btn btn-outline-secondary"
+                                    data-barcode-scan-target="#part-search-input"
+                                    data-barcode-form="#part-search-form"
+                                    data-barcode-auto-submit="true"
+                                >
+                                    <i class="fa-solid fa-camera"></i>
+                                </button>
+                            </div>
                         </div>
                         <div class="col-md-3">
                             <label class="form-label">Vehicle ID</label>
                             <input type="text" name="vehicle" value="{{ query_vehicle_id|default:'' }}" class="form-control" placeholder="Optional">
                         </div>
-                        <div class="col-md-2 d-grid">
+                        <div class="col-md-3 d-grid">
                             <button class="btn btn-primary" type="submit"><i class="fa-solid fa-magnifying-glass"></i> بحث</button>
                         </div>
                     </form>
@@ -73,6 +84,7 @@
                                             <th>الفرع</th>
                                             <th>الكمية</th>
                                             <th style="width: 280px;">إضافة للسلة</th>
+                                            <th style="width: 140px;">تحويل</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -92,6 +104,13 @@
                                                         </form>
                                                     {% else %}
                                                         <span class="text-muted small">غير متوفر</span>
+                                                    {% endif %}
+                                                </td>
+                                                <td>
+                                                    {% if stock.quantity > 0 and active_branch and stock.branch.id != active_branch.id %}
+                                                        <a href="{% url 'transfer_create_from_stock' stock.id %}" class="btn btn-sm btn-outline-warning">طلب تحويل</a>
+                                                    {% else %}
+                                                        <span class="text-muted small">-</span>
                                                     {% endif %}
                                                 </td>
                                             </tr>

@@ -1,0 +1,111 @@
+{% extends 'inventory/base.html' %}
+
+{% block title %}Audit Log{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 px-lg-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h1 class="h4 mb-1">Audit Log</h1>
+            <p class="text-muted mb-0">Sensitive actions across sales, stock, transfers, pricing, and roles.</p>
+        </div>
+    </div>
+
+    <div class="card delta-card mb-3">
+        <div class="card-body">
+            <form method="get" class="row g-2 align-items-end">
+                <div class="col-md-2">
+                    <label class="form-label">Employee</label>
+                    <input type="text" name="employee" class="form-control" value="{{ employee }}" placeholder="employee id / username">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Action</label>
+                    <select name="action" class="form-select">
+                        <option value="">All</option>
+                        {% for action in actions %}
+                            <option value="{{ action }}" {% if selected_action == action %}selected{% endif %}>{{ action }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Reason</label>
+                    <input type="text" name="reason" class="form-control" value="{{ selected_reason }}" placeholder="contains reason">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Branch</label>
+                    <select name="branch" class="form-select">
+                        <option value="">All</option>
+                        {% for branch in branches %}
+                            <option value="{{ branch.id }}" {% if selected_branch == branch.id %}selected{% endif %}>{{ branch.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">From</label>
+                    <input type="date" name="start_date" class="form-control" value="{{ start_date }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">To</label>
+                    <input type="date" name="end_date" class="form-control" value="{{ end_date }}">
+                </div>
+                <div class="col-md-2 d-grid">
+                    <button class="btn btn-primary">Filter</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card delta-card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Actor</th>
+                            <th>Employee ID</th>
+                            <th>Branch</th>
+                            <th>Action</th>
+                            <th>Reason</th>
+                            <th>Object</th>
+                            <th>Before</th>
+                            <th>After</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for log in logs %}
+                        <tr>
+                            <td>{{ log.timestamp|date:"Y-m-d H:i:s" }}</td>
+                            <td>{{ log.actor_username }}</td>
+                            <td>{{ log.actor_employee_id|default:"-" }}</td>
+                            <td>{{ log.branch.name|default:"-" }}</td>
+                            <td><code>{{ log.action }}</code></td>
+                            <td>{{ log.reason }}</td>
+                            <td>{{ log.object_type }}:{{ log.object_id }}</td>
+                            <td><pre class="small mb-0">{{ log.before_data }}</pre></td>
+                            <td><pre class="small mb-0">{{ log.after_data }}</pre></td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="9" class="text-center text-muted py-5">No audit logs found.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {% if page_obj and page_obj.paginator.num_pages > 1 %}
+        <nav class="mt-4">
+            <ul class="pagination justify-content-center">
+                {% if page_obj.has_previous %}
+                    <li class="page-item"><a class="page-link" href="?employee={{ employee|urlencode }}&action={{ selected_action|urlencode }}&reason={{ selected_reason|urlencode }}&branch={{ selected_branch|default:'' }}&start_date={{ start_date|default:'' }}&end_date={{ end_date|default:'' }}&page={{ page_obj.previous_page_number }}">Previous</a></li>
+                {% endif %}
+                <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+                {% if page_obj.has_next %}
+                    <li class="page-item"><a class="page-link" href="?employee={{ employee|urlencode }}&action={{ selected_action|urlencode }}&reason={{ selected_reason|urlencode }}&branch={{ selected_branch|default:'' }}&start_date={{ start_date|default:'' }}&end_date={{ end_date|default:'' }}&page={{ page_obj.next_page_number }}">Next</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+    {% endif %}
+</div>
+{% endblock %}

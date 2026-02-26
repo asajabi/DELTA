@@ -1,0 +1,88 @@
+﻿{% extends 'inventory/base.html' %}
+
+{% block title %}الدعم الفني{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 px-lg-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h1 class="h4 mb-1">الدعم الفني</h1>
+            <p class="text-muted mb-0">
+                {% if is_tech_user %}
+                    لوحة متابعة جميع التذاكر.
+                {% else %}
+                    يمكنك متابعة تذاكرك ورفع طلب جديد.
+                {% endif %}
+            </p>
+        </div>
+        <a class="btn btn-primary" href="{% url 'ticket_create' %}">تذكرة جديدة</a>
+    </div>
+
+    <div class="card delta-card mb-3">
+        <div class="card-body">
+            <form method="get" class="row g-2 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label">الحالة</label>
+                    <select name="status" class="form-select">
+                        <option value="">الكل</option>
+                        {% for value, label in status_choices %}
+                            <option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% if is_tech_user %}
+                <div class="col-md-4">
+                    <label class="form-label">الفرع</label>
+                    <select name="branch" class="form-select">
+                        <option value="">كل الفروع</option>
+                        {% for branch in branch_choices %}
+                            <option value="{{ branch.id }}" {% if selected_branch == branch.id %}selected{% endif %}>{{ branch.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+                <div class="col-md-2 d-grid">
+                    <button type="submit" class="btn btn-outline-primary">تطبيق</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card delta-card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>العنوان</th>
+                            <th>الحالة</th>
+                            <th>الأولوية</th>
+                            <th>الفرع</th>
+                            <th>الرافع</th>
+                            <th>المسؤول</th>
+                            <th>تاريخ الإنشاء</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ticket in tickets %}
+                            <tr>
+                                <td><a href="{% url 'ticket_detail' ticket.id %}">#{{ ticket.id }}</a></td>
+                                <td>{{ ticket.title }}</td>
+                                <td>{{ ticket.get_status_display }}</td>
+                                <td>{{ ticket.get_priority_display }}</td>
+                                <td>{{ ticket.branch.name|default:'-' }}</td>
+                                <td>{{ ticket.reporter.username }}</td>
+                                <td>{{ ticket.assignee.username|default:'-' }}</td>
+                                <td>{{ ticket.created_at|date:"Y-m-d H:i" }}</td>
+                            </tr>
+                        {% empty %}
+                            <tr><td colspan="8" class="text-center text-muted py-4">لا توجد تذاكر.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

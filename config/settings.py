@@ -18,6 +18,54 @@ def env_bool(name: str, default: bool = False) -> bool:
     return os.getenv(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _database_config():
+    engine_aliases = {
+        "sqlite": "django.db.backends.sqlite3",
+        "sqlite3": "django.db.backends.sqlite3",
+        "postgres": "django.db.backends.postgresql",
+        "postgresql": "django.db.backends.postgresql",
+        "mysql": "django.db.backends.mysql",
+        "mariadb": "django.db.backends.mysql",
+    }
+    raw_engine = (os.getenv("DJANGO_DB_ENGINE", "django.db.backends.sqlite3") or "").strip()
+    engine = engine_aliases.get(raw_engine.lower(), raw_engine)
+    if not engine:
+        engine = "django.db.backends.sqlite3"
+
+    if engine == "django.db.backends.sqlite3":
+        db_name = (os.getenv("DJANGO_DB_NAME", "") or "").strip()
+        return {
+            "ENGINE": engine,
+            "NAME": db_name or (BASE_DIR / "db.sqlite3"),
+        }
+
+    config = {
+        "ENGINE": engine,
+        "NAME": (os.getenv("DJANGO_DB_NAME", "") or "").strip(),
+        "USER": (os.getenv("DJANGO_DB_USER", "") or "").strip(),
+        "PASSWORD": os.getenv("DJANGO_DB_PASSWORD", ""),
+        "HOST": (os.getenv("DJANGO_DB_HOST", "") or "").strip(),
+        "PORT": (os.getenv("DJANGO_DB_PORT", "") or "").strip(),
+    }
+
+    if engine == "django.db.backends.mysql":
+        mysql_collation = (os.getenv("DJANGO_DB_COLLATION", "utf8mb4_unicode_ci") or "").strip()
+        config["OPTIONS"] = {
+            "charset": "utf8mb4",
+            "init_command": f"SET NAMES utf8mb4 COLLATE {mysql_collation}",
+        }
+        config["TEST"] = {
+            "CHARSET": "utf8mb4",
+            "COLLATION": mysql_collation,
+        }
+    elif engine == "django.db.backends.postgresql":
+        config["OPTIONS"] = {
+            "options": "-c client_encoding=UTF8",
+        }
+
+    return config
+
+
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "django-insecure-x5oba50mau$ellbvo5(8ro2v1!bos6!ephw)o+(i6=1&3$asl&")
 DEBUG = env_bool("DJANGO_DEBUG", True)
 
@@ -78,12 +126,7 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
-}
+DATABASES = {"default": _database_config()}
 
 
 # Password validation
@@ -125,6 +168,7 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_DIRS = [BASE_DIR / 'static']
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 

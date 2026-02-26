@@ -1,0 +1,109 @@
+{% extends 'inventory/base.html' %}
+
+{% block title %}Transfer Requests{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 px-lg-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+        <div>
+            <h1 class="h4 mb-1">Inter-Branch Transfers</h1>
+            <p class="text-muted mb-0">Incoming and outgoing transfer requests for your branch scope.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{% url 'transfer_create' %}" class="btn btn-primary">New Transfer Request | طلب تحويل جديد</a>
+            <a href="{% url 'transfer_approvals' %}" class="btn btn-outline-primary">Approvals</a>
+            <a href="{% url 'transfer_driver_tasks' %}" class="btn btn-outline-dark">Driver Tasks</a>
+            <a href="{% url 'transfer_receive_list' %}" class="btn btn-outline-success">Receive</a>
+        </div>
+    </div>
+
+    <div class="card delta-card mb-3">
+        <div class="card-body">
+            <form method="get" class="row g-2 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label">Status</label>
+                    <select name="status" class="form-select">
+                        <option value="">All statuses</option>
+                        {% for value, label in status_choices %}
+                            <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2 d-grid">
+                    <button class="btn btn-outline-secondary" type="submit">Filter</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card delta-card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Created</th>
+                            <th>Part</th>
+                            <th>Qty</th>
+                            <th>From</th>
+                            <th>To</th>
+                            <th>Status</th>
+                            <th>Reserved</th>
+                            <th>Driver</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for transfer in transfers %}
+                        <tr>
+                            <td>{{ transfer.id }}</td>
+                            <td>{{ transfer.created_at|date:"Y-m-d H:i" }}</td>
+                            <td>
+                                {{ transfer.part.name }}
+                                <div class="small text-muted">{{ transfer.part.part_number }}</div>
+                            </td>
+                            <td>{{ transfer.quantity }}</td>
+                            <td>{{ transfer.source_branch.name }}</td>
+                            <td>{{ transfer.destination_branch.name }}</td>
+                            <td>
+                                {% if transfer.status == 'requested' %}
+                                    <span class="badge text-bg-secondary">Requested</span>
+                                {% elif transfer.status == 'approved' %}
+                                    <span class="badge text-bg-primary">Approved</span>
+                                {% elif transfer.status == 'rejected' %}
+                                    <span class="badge text-bg-danger">Rejected</span>
+                                {% elif transfer.status == 'picked_up' %}
+                                    <span class="badge text-bg-warning">Picked Up</span>
+                                {% elif transfer.status == 'delivered' %}
+                                    <span class="badge text-bg-info">Delivered</span>
+                                {% elif transfer.status == 'received' %}
+                                    <span class="badge text-bg-success">Received</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ transfer.reserved_quantity }}</td>
+                            <td>{{ transfer.driver.username|default:'-' }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="9" class="text-center text-muted py-5">No transfer requests found.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {% if page_obj and page_obj.paginator.num_pages > 1 %}
+        <nav class="mt-4">
+            <ul class="pagination justify-content-center">
+                {% if page_obj.has_previous %}
+                    <li class="page-item"><a class="page-link" href="?status={{ status_filter|default:'' }}&page={{ page_obj.previous_page_number }}">Previous</a></li>
+                {% endif %}
+                <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+                {% if page_obj.has_next %}
+                    <li class="page-item"><a class="page-link" href="?status={{ status_filter|default:'' }}&page={{ page_obj.next_page_number }}">Next</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+    {% endif %}
+</div>
+{% endblock %}

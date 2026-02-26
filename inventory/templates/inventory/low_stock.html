@@ -6,8 +6,35 @@
 <div class="container-fluid px-3 px-lg-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h1 class="h4 mb-0">تنبيه المخزون المنخفض</h1>
-        <a href="{% url 'part_search' %}" class="btn btn-outline-secondary">عودة</a>
+        <div class="d-flex gap-2">
+            <a href="{% url 'export_low_stock_csv' %}{% if selected_branch %}?branch={{ selected_branch }}{% endif %}" class="btn btn-outline-success">CSV</a>
+            <a href="{% url 'part_search' %}" class="btn btn-outline-secondary">عودة</a>
+        </div>
     </div>
+    <div class="alert alert-info">
+        يظهر التنبيه عندما تكون الكمية المتاحة أقل من أو تساوي <strong>Min stock level</strong> للصنف (ويكون الحد الأدنى أكبر من صفر).
+    </div>
+
+    {% if is_admin %}
+    <div class="card delta-card mb-3">
+        <div class="card-body">
+            <form method="get" class="row g-2 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label">الفرع</label>
+                    <select name="branch" class="form-select">
+                        <option value="">كل الفروع</option>
+                        {% for branch in branches %}
+                            <option value="{{ branch.id }}" {% if selected_branch == branch.id %}selected{% endif %}>{{ branch.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2 d-grid">
+                    <button class="btn btn-primary" type="submit">تطبيق</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
 
     <div class="card delta-card">
         <div class="card-body">
@@ -15,7 +42,9 @@
                 <table class="table table-striped align-middle mb-0">
                     <thead>
                         <tr>
-                            <th>Qty</th>
+                            <th>Available</th>
+                            <th>Reserved</th>
+                            <th>Min Level</th>
                             <th>Part Name</th>
                             <th>Part Number</th>
                             <th>Branch</th>
@@ -25,14 +54,16 @@
                     {% for stock in low_stock_items %}
                         <tr>
                             <td>
-                                <span class="badge {% if stock.quantity == 0 %}text-bg-danger{% else %}text-bg-warning{% endif %}">{{ stock.quantity }}</span>
+                                <span class="badge {% if stock.available_quantity == 0 %}text-bg-danger{% else %}text-bg-warning{% endif %}">{{ stock.available_quantity }}</span>
                             </td>
+                            <td>{{ stock.reserved_quantity }}</td>
+                            <td>{{ stock.min_stock_level }}</td>
                             <td>{{ stock.part.name }}</td>
                             <td>{{ stock.part.part_number }}</td>
                             <td>{{ stock.branch.name }}</td>
                         </tr>
                     {% empty %}
-                        <tr><td colspan="4" class="text-center text-muted py-5">No low-stock items.</td></tr>
+                        <tr><td colspan="6" class="text-center text-muted py-5">لا توجد مواد منخفضة المخزون ضمن النطاق المحدد.</td></tr>
                     {% endfor %}
                     </tbody>
                 </table>
@@ -42,16 +73,16 @@
 
     {% if page_obj and page_obj.paginator.num_pages > 1 %}
         <nav class="mt-4">
-            <ul class="pagination justify-content-center">
+                <ul class="pagination justify-content-center">
                 {% if page_obj.has_previous %}
-                    <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a></li>
+                    <li class="page-item"><a class="page-link" href="?branch={{ selected_branch|default:'' }}&page={{ page_obj.previous_page_number }}">Previous</a></li>
                 {% endif %}
                 <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
                 {% if page_obj.has_next %}
-                    <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a></li>
+                    <li class="page-item"><a class="page-link" href="?branch={{ selected_branch|default:'' }}&page={{ page_obj.next_page_number }}">Next</a></li>
                 {% endif %}
-            </ul>
-        </nav>
+                </ul>
+            </nav>
     {% endif %}
 </div>
 {% endblock %}
