@@ -1,15 +1,15 @@
-{% extends "inventory/base.html" %}
+﻿{% extends "inventory/base.html" %}
 
-{% block title %}Stock by Location{% endblock %}
+{% block title %}المخزون حسب الموقع{% endblock %}
 
 {% block content %}
 <div class="container-fluid px-3 px-lg-4">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div>
-            <h1 class="h4 mb-1">Stock by Location</h1>
-            <p class="text-muted mb-0">Add, remove, and move stock between shelves/bins.</p>
+            <h1 class="h4 mb-1">المخزون حسب الموقع</h1>
+            <p class="text-muted mb-0">إضافة، سحب، وتحريك المخزون بين المواقع.</p>
         </div>
-        <a class="btn btn-outline-secondary" href="{% url 'location_list' %}{% if selected_branch %}?branch={{ selected_branch }}{% endif %}">Manage Locations</a>
+        <a class="btn btn-outline-secondary" href="{% url 'location_list' %}{% if selected_branch %}?branch={{ selected_branch }}{% endif %}">إدارة المواقع</a>
     </div>
 
     <div class="card delta-card mb-3">
@@ -17,9 +17,9 @@
             <form id="stock-location-search-form" method="get" class="row g-2 align-items-end">
                 {% if is_admin %}
                     <div class="col-md-4">
-                        <label class="form-label">Branch</label>
+                        <label class="form-label">الفرع</label>
                         <select name="branch" class="form-select" onchange="this.form.submit()">
-                            <option value="">Select branch</option>
+                            <option value="">اختر الفرع</option>
                             {% for branch in branches %}
                                 <option value="{{ branch.id }}" {% if selected_branch == branch.id %}selected{% endif %}>{{ branch.name }}</option>
                             {% endfor %}
@@ -27,9 +27,9 @@
                     </div>
                 {% endif %}
                 <div class="col-md-4">
-                    <label class="form-label">Search</label>
+                    <label class="form-label">بحث</label>
                     <div class="input-group">
-                        <input id="stock-location-search-input" type="text" class="form-control" name="q" value="{{ query }}" placeholder="Part number, name, location code">
+                        <input id="stock-location-search-input" type="text" class="form-control" name="q" value="{{ query }}" placeholder="رقم القطعة، الاسم، أو كود الموقع">
                         <button
                             type="button"
                             class="btn btn-outline-secondary"
@@ -42,7 +42,7 @@
                     </div>
                 </div>
                 <div class="col-md-2 d-grid">
-                    <button class="btn btn-primary" type="submit">Apply</button>
+                    <button class="btn btn-primary" type="submit">تطبيق</button>
                 </div>
             </form>
         </div>
@@ -54,9 +54,9 @@
                 {% csrf_token %}
                 <input type="hidden" name="action" value="scan">
                 <div class="col-md-5">
-                    <label class="form-label">Scan Barcode / Part Number</label>
+                    <label class="form-label">مسح باركود / رقم قطعة</label>
                     <div class="input-group">
-                        <input id="stock-scan-input" type="text" name="scan_code" class="form-control" placeholder="Scan then press Enter" autofocus required>
+                        <input id="stock-scan-input" type="text" name="scan_code" class="form-control" placeholder="امسح ثم اضغط Enter" autofocus required>
                         <button
                             type="button"
                             class="btn btn-outline-light"
@@ -64,25 +64,25 @@
                             data-barcode-form="#stock-scan-form"
                             data-barcode-auto-submit="true"
                         >
-                            <i class="fa-solid fa-camera"></i> Camera
+                            <i class="fa-solid fa-camera"></i> كاميرا
                         </button>
                     </div>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label">Mode</label>
+                    <label class="form-label">الوضع</label>
                     <select name="mode" class="form-select">
-                        <option value="add" {% if scan_mode == 'add' %}selected{% endif %}>Add stock</option>
-                        <option value="remove" {% if scan_mode == 'remove' %}selected{% endif %}>Remove stock</option>
-                        <option value="move" {% if scan_mode == 'move' %}selected{% endif %}>Move stock</option>
-                        <option value="info" {% if scan_mode == 'info' %}selected{% endif %}>Item info</option>
+                        <option value="add" {% if scan_mode == 'add' %}selected{% endif %}>إضافة مخزون</option>
+                        <option value="remove" {% if scan_mode == 'remove' %}selected{% endif %}>سحب مخزون</option>
+                        <option value="move" {% if scan_mode == 'move' %}selected{% endif %}>تحريك مخزون</option>
+                        <option value="info" {% if scan_mode == 'info' %}selected{% endif %}>معلومات الصنف</option>
                     </select>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label">Qty</label>
+                    <label class="form-label">الكمية</label>
                     <input type="number" name="quantity" min="1" value="{{ scan_qty|default:1 }}" class="form-control">
                 </div>
                 <div class="col-md-2 d-grid">
-                    <button class="btn btn-outline-primary" type="submit">Scan</button>
+                    <button class="btn btn-outline-primary" type="submit">مسح</button>
                 </div>
             </form>
         </div>
@@ -91,17 +91,17 @@
     <div class="card delta-card mb-3">
         <div class="card-body">
             <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-                <h2 class="h6 mb-0">Scanned Batch</h2>
-                <div class="small text-muted">Total units: {{ scan_batch_total_qty }}</div>
+                <h2 class="h6 mb-0">دفعة المسح</h2>
+                <div class="small text-muted">إجمالي الوحدات: {{ scan_batch_total_qty }}</div>
             </div>
             <div class="table-responsive mb-2">
                 <table class="table table-sm align-middle mb-0">
                     <thead>
                         <tr>
-                            <th>Part #</th>
-                            <th>Part Name</th>
-                            <th>Qty</th>
-                            <th class="text-end">Actions</th>
+                            <th>رقم القطعة</th>
+                            <th>اسم الصنف</th>
+                            <th>الكمية</th>
+                            <th class="text-end">إجراءات</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -128,13 +128,13 @@
                                             {% csrf_token %}
                                             <input type="hidden" name="action" value="line_remove">
                                             <input type="hidden" name="part_id" value="{{ line.part_id }}">
-                                            <button class="btn btn-sm btn-outline-danger" type="submit">Remove</button>
+                                            <button class="btn btn-sm btn-outline-danger" type="submit">حذف</button>
                                         </form>
                                     </div>
                                 </td>
                             </tr>
                         {% empty %}
-                            <tr><td colspan="4" class="text-center text-muted py-3">No scanned items yet.</td></tr>
+                            <tr><td colspan="4" class="text-center text-muted py-3">لا توجد عناصر ممسوحة بعد.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -143,12 +143,12 @@
                 <form method="post" action="{% url 'stock_scan_apply' %}">
                     {% csrf_token %}
                     <input type="hidden" name="action" value="undo">
-                    <button class="btn btn-sm btn-outline-secondary" type="submit">Undo last scan</button>
+                    <button class="btn btn-sm btn-outline-secondary" type="submit">تراجع عن آخر مسح</button>
                 </form>
                 <form method="post" action="{% url 'stock_scan_apply' %}">
                     {% csrf_token %}
                     <input type="hidden" name="action" value="clear">
-                    <button class="btn btn-sm btn-outline-danger" type="submit">Clear batch</button>
+                    <button class="btn btn-sm btn-outline-danger" type="submit">تفريغ الدفعة</button>
                 </form>
             </div>
             <hr>
@@ -156,37 +156,37 @@
                 {% csrf_token %}
                 <input type="hidden" name="action" value="apply">
                 <div class="col-md-3">
-                    <label class="form-label">Apply Mode</label>
+                    <label class="form-label">وضع التطبيق</label>
                     <select name="mode" class="form-select">
-                        <option value="add" {% if scan_mode == 'add' or not scan_mode %}selected{% endif %}>Add stock</option>
-                        <option value="remove" {% if scan_mode == 'remove' %}selected{% endif %}>Remove stock</option>
-                        <option value="move" {% if scan_mode == 'move' %}selected{% endif %}>Move stock</option>
+                        <option value="add" {% if scan_mode == 'add' or not scan_mode %}selected{% endif %}>إضافة مخزون</option>
+                        <option value="remove" {% if scan_mode == 'remove' %}selected{% endif %}>سحب مخزون</option>
+                        <option value="move" {% if scan_mode == 'move' %}selected{% endif %}>تحريك مخزون</option>
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label">From Location</label>
+                    <label class="form-label">من موقع</label>
                     <select name="from_location_id" class="form-select">
-                        <option value="">Select source</option>
+                        <option value="">اختر المصدر</option>
                         {% for location in location_choices %}
                             <option value="{{ location.id }}">{{ location.code }}</option>
                         {% endfor %}
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label">To Location</label>
+                    <label class="form-label">إلى موقع</label>
                     <select name="to_location_id" class="form-select">
-                        <option value="">Select destination</option>
+                        <option value="">اختر الوجهة</option>
                         {% for location in location_choices %}
                             <option value="{{ location.id }}">{{ location.code }}</option>
                         {% endfor %}
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label">Reason</label>
+                    <label class="form-label">السبب</label>
                     <input type="text" name="reason" class="form-control" value="scan_batch_apply" required>
                 </div>
                 <div class="col-12 d-grid">
-                    <button class="btn btn-primary" type="submit">Apply Scanned Batch</button>
+                    <button class="btn btn-primary" type="submit">تطبيق الدفعة الممسوحة</button>
                 </div>
             </form>
         </div>
@@ -196,39 +196,39 @@
         <div class="col-lg-4">
             <div class="card delta-card h-100">
                 <div class="card-body">
-                    <h2 class="h6">Add</h2>
+                    <h2 class="h6">إضافة</h2>
                     <form method="post" class="row g-2">
                         {% csrf_token %}
                         <input type="hidden" name="action" value="add">
                         {% if selected_branch %}<input type="hidden" name="branch" value="{{ selected_branch }}">{% endif %}
                         <div class="col-12">
-                            <label class="form-label">Part</label>
-                            <select name="part_id" class="form-select" required>
-                                <option value="">Select part</option>
+                            <label class="form-label">الصنف</label>
+                            <select name="part_id" class="form-select js-part-select" data-part-placeholder="ابحث عن الصنف برقم القطعة أو الاسم" required>
+                                <option value="">اختر الصنف</option>
                                 {% for part in part_choices %}
                                     <option value="{{ part.id }}" {% if scan_part_id == part.id and scan_mode == 'add' %}selected{% endif %}>{{ part.part_number }} - {{ part.name }}</option>
                                 {% endfor %}
                             </select>
                         </div>
                         <div class="col-12">
-                            <label class="form-label">To Location</label>
+                            <label class="form-label">إلى موقع</label>
                             <select name="to_location_id" class="form-select" required>
-                                <option value="">Select location</option>
+                                <option value="">اختر الموقع</option>
                                 {% for location in location_choices %}
                                     <option value="{{ location.id }}">{{ location.code }} - {{ location.name_en|default:location.name_ar|default:"-" }}</option>
                                 {% endfor %}
                             </select>
                         </div>
                         <div class="col-6">
-                            <label class="form-label">Qty</label>
+                            <label class="form-label">الكمية</label>
                             <input type="number" class="form-control" name="quantity" min="1" value="{% if scan_mode == 'add' %}{{ scan_qty|default:1 }}{% endif %}" required>
                         </div>
                         <div class="col-12">
-                            <label class="form-label">Reason</label>
+                            <label class="form-label">السبب</label>
                             <input type="text" class="form-control" name="reason" value="{% if scan_mode == 'add' %}{{ scan_reason|default:'scan_add' }}{% endif %}" required>
                         </div>
                         <div class="col-12 d-grid mt-1">
-                            <button class="btn btn-success" type="submit">Add Stock</button>
+                            <button class="btn btn-success" type="submit">إضافة مخزون</button>
                         </div>
                     </form>
                 </div>
@@ -238,39 +238,39 @@
         <div class="col-lg-4">
             <div class="card delta-card h-100">
                 <div class="card-body">
-                    <h2 class="h6">Remove</h2>
+                    <h2 class="h6">سحب</h2>
                     <form method="post" class="row g-2">
                         {% csrf_token %}
                         <input type="hidden" name="action" value="remove">
                         {% if selected_branch %}<input type="hidden" name="branch" value="{{ selected_branch }}">{% endif %}
                         <div class="col-12">
-                            <label class="form-label">Part</label>
-                            <select name="part_id" class="form-select" required>
-                                <option value="">Select part</option>
+                            <label class="form-label">الصنف</label>
+                            <select name="part_id" class="form-select js-part-select" data-part-placeholder="ابحث عن الصنف برقم القطعة أو الاسم" required>
+                                <option value="">اختر الصنف</option>
                                 {% for part in part_choices %}
                                     <option value="{{ part.id }}" {% if scan_part_id == part.id and scan_mode == 'remove' %}selected{% endif %}>{{ part.part_number }} - {{ part.name }}</option>
                                 {% endfor %}
                             </select>
                         </div>
                         <div class="col-12">
-                            <label class="form-label">From Location</label>
+                            <label class="form-label">من موقع</label>
                             <select name="from_location_id" class="form-select" required>
-                                <option value="">Select location</option>
+                                <option value="">اختر الموقع</option>
                                 {% for location in location_choices %}
                                     <option value="{{ location.id }}">{{ location.code }} - {{ location.name_en|default:location.name_ar|default:"-" }}</option>
                                 {% endfor %}
                             </select>
                         </div>
                         <div class="col-6">
-                            <label class="form-label">Qty</label>
+                            <label class="form-label">الكمية</label>
                             <input type="number" class="form-control" name="quantity" min="1" value="{% if scan_mode == 'remove' %}{{ scan_qty|default:1 }}{% endif %}" required>
                         </div>
                         <div class="col-12">
-                            <label class="form-label">Reason</label>
+                            <label class="form-label">السبب</label>
                             <input type="text" class="form-control" name="reason" value="{% if scan_mode == 'remove' %}{{ scan_reason|default:'scan_remove' }}{% endif %}" required>
                         </div>
                         <div class="col-12 d-grid mt-1">
-                            <button class="btn btn-warning" type="submit">Remove Stock</button>
+                            <button class="btn btn-warning" type="submit">سحب مخزون</button>
                         </div>
                     </form>
                 </div>
@@ -280,48 +280,48 @@
         <div class="col-lg-4">
             <div class="card delta-card h-100">
                 <div class="card-body">
-                    <h2 class="h6">Move</h2>
+                    <h2 class="h6">تحريك</h2>
                     <form method="post" class="row g-2">
                         {% csrf_token %}
                         <input type="hidden" name="action" value="move">
                         {% if selected_branch %}<input type="hidden" name="branch" value="{{ selected_branch }}">{% endif %}
                         <div class="col-12">
-                            <label class="form-label">Part</label>
-                            <select name="part_id" class="form-select" required>
-                                <option value="">Select part</option>
+                            <label class="form-label">الصنف</label>
+                            <select name="part_id" class="form-select js-part-select" data-part-placeholder="ابحث عن الصنف برقم القطعة أو الاسم" required>
+                                <option value="">اختر الصنف</option>
                                 {% for part in part_choices %}
                                     <option value="{{ part.id }}">{{ part.part_number }} - {{ part.name }}</option>
                                 {% endfor %}
                             </select>
                         </div>
                         <div class="col-6">
-                            <label class="form-label">From</label>
+                            <label class="form-label">من</label>
                             <select name="from_location_id" class="form-select" required>
-                                <option value="">From</option>
+                                <option value="">من</option>
                                 {% for location in location_choices %}
                                     <option value="{{ location.id }}">{{ location.code }}</option>
                                 {% endfor %}
                             </select>
                         </div>
                         <div class="col-6">
-                            <label class="form-label">To</label>
+                            <label class="form-label">إلى</label>
                             <select name="to_location_id" class="form-select" required>
-                                <option value="">To</option>
+                                <option value="">إلى</option>
                                 {% for location in location_choices %}
                                     <option value="{{ location.id }}">{{ location.code }}</option>
                                 {% endfor %}
                             </select>
                         </div>
                         <div class="col-6">
-                            <label class="form-label">Qty</label>
+                            <label class="form-label">الكمية</label>
                             <input type="number" class="form-control" name="quantity" min="1" required>
                         </div>
                         <div class="col-12">
-                            <label class="form-label">Reason</label>
+                            <label class="form-label">السبب</label>
                             <input type="text" class="form-control" name="reason" required>
                         </div>
                         <div class="col-12 d-grid mt-1">
-                            <button class="btn btn-primary" type="submit">Move Stock</button>
+                            <button class="btn btn-primary" type="submit">تحريك مخزون</button>
                         </div>
                     </form>
                 </div>
@@ -333,15 +333,15 @@
         <div class="col-lg-7">
             <div class="card delta-card h-100">
                 <div class="card-body">
-                    <h2 class="h6 mb-2">Current Stock by Location</h2>
+                    <h2 class="h6 mb-2">المخزون الحالي حسب الموقع</h2>
                     <div class="table-responsive">
                         <table class="table table-sm align-middle mb-0">
                             <thead>
                                 <tr>
-                                    <th>Part #</th>
-                                    <th>Part Name</th>
-                                    <th>Location</th>
-                                    <th>Qty</th>
+                                    <th>رقم القطعة</th>
+                                    <th>اسم الصنف</th>
+                                    <th>الموقع</th>
+                                    <th>الكمية</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -353,7 +353,7 @@
                                         <td>{{ row.quantity }}</td>
                                     </tr>
                                 {% empty %}
-                                    <tr><td colspan="4" class="text-center text-muted py-4">No stock locations found.</td></tr>
+                                    <tr><td colspan="4" class="text-center text-muted py-4">لا توجد بيانات مخزون للمواقع.</td></tr>
                                 {% endfor %}
                             </tbody>
                         </table>
@@ -365,16 +365,16 @@
         <div class="col-lg-5">
             <div class="card delta-card h-100">
                 <div class="card-body">
-                    <h2 class="h6 mb-2">Recent Movements</h2>
+                    <h2 class="h6 mb-2">آخر الحركات</h2>
                     <div class="table-responsive">
                         <table class="table table-sm align-middle mb-0">
                             <thead>
                                 <tr>
-                                    <th>Time</th>
-                                    <th>Action</th>
-                                    <th>Part</th>
-                                    <th>Qty</th>
-                                    <th>From → To</th>
+                                    <th>الوقت</th>
+                                    <th>الإجراء</th>
+                                    <th>الصنف</th>
+                                    <th>الكمية</th>
+                                    <th>من إلى</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -392,7 +392,7 @@
                                         </td>
                                     </tr>
                                 {% empty %}
-                                    <tr><td colspan="5" class="text-center text-muted py-4">No movement logs yet.</td></tr>
+                                    <tr><td colspan="5" class="text-center text-muted py-4">لا توجد حركات بعد.</td></tr>
                                 {% endfor %}
                             </tbody>
                         </table>

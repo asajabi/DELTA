@@ -9,11 +9,9 @@
 
   :root {
     --official-blue: #1a237e;
+    --frame: #2b2b2b;
   }
 
-  /* =========================
-     ULTRA-TIGHT PRINT CONFIG
-     ========================= */
   @media print {
     @page { size: A4; margin: 0; }
 
@@ -25,8 +23,8 @@
       overflow: hidden;
     }
 
-    header, footer, nav, .btn, .no-print, .navbar, .sidebar { 
-      display: none !important; 
+    header, footer, nav, .btn, .no-print, .navbar, .sidebar {
+      display: none !important;
     }
 
     .paper-sheet {
@@ -36,13 +34,12 @@
       width: 100vw !important;
       height: 100vh !important;
       margin: 0 !important;
-      padding: 2mm !important; 
+      padding: 2mm !important;
       display: flex !important;
       flex-direction: column;
       box-sizing: border-box !important;
     }
 
-    /* Sealed border frame */
     .border-frame {
       flex: 1;
       border: 2pt solid var(--official-blue) !important;
@@ -53,9 +50,92 @@
     }
   }
 
-  /* =========================
-     SCREEN PREVIEW
-     ========================= */
+  @media screen and (max-width: 768px) {
+    body {
+      background: #eef2f7;
+    }
+
+    .paper-sheet {
+      width: 100%;
+      max-width: 100%;
+      height: auto;
+      margin: 0;
+      padding: 6px;
+      box-shadow: none;
+    }
+
+    .border-frame {
+      padding: 10px;
+      border-radius: 8px;
+    }
+
+    .header-section {
+      grid-template-columns: 1fr;
+      gap: 8px;
+      text-align: center;
+    }
+
+    .header-col-en,
+    .header-col-ar {
+      text-align: center;
+    }
+
+    .header-logo img {
+      max-height: 96px;
+    }
+
+    .brand-ar {
+      font-size: 1.3rem;
+      white-space: normal;
+    }
+
+    .brand-en {
+      font-size: 1.35rem;
+    }
+
+    .header-company-line {
+      justify-content: center;
+      flex-wrap: wrap;
+      white-space: normal;
+      line-height: 1.35;
+    }
+
+    .meta-top {
+      grid-template-columns: 1fr;
+    }
+
+    .qr-slot {
+      min-height: 150px;
+    }
+
+    .table-container {
+      overflow-x: auto;
+    }
+
+    .inv-table {
+      min-width: 860px;
+    }
+
+    .totals-box {
+      grid-template-columns: 1fr;
+    }
+
+    .sign-row {
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .sign-box-title {
+      font-size: 1.1rem;
+    }
+  }
+
+  @media screen and (max-width: 480px) {
+    .sign-row {
+      grid-template-columns: 1fr;
+    }
+  }
+
   body { background: #333; font-family: 'Roboto', 'Cairo', sans-serif; }
 
   .paper-sheet {
@@ -68,108 +148,277 @@
     flex-direction: column;
     box-sizing: border-box;
     box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    overflow: hidden;
   }
 
   .border-frame {
-    border: 2px solid var(--official-blue);
+    border: 1.6px solid var(--official-blue);
+    border-radius: 10px;
     flex: 1;
     display: flex;
     flex-direction: column;
-    padding: 8mm;
+    padding: 7mm;
     box-sizing: border-box;
+    background: #fcfdff;
   }
 
-  /* Header Branding */
   .header-section {
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: 1fr 220px 1fr;
     align-items: center;
-    border-bottom: 2px solid var(--official-blue);
-    padding-bottom: 12px;
-    margin-bottom: 15px;
+    padding: 2px 0 4px;
+    margin-bottom: 0;
+    gap: 12px;
   }
-  
-  /* Adjusted widths to accommodate single-line English name */
-  .header-col-en { width: 35%; color: var(--official-blue); }
-  .header-col-ar { width: 35%; color: var(--official-blue); text-align: right; }
-  
-  /* BIGGER LOGO */
-  .header-logo { width: 25%; text-align: center; }
-  .header-logo img { 
-    max-height: 110px; /* Increased from 70px */
-    width: auto; 
+
+  .header-col-en {
+    color: var(--official-blue);
+    text-align: left;
+    line-height: 1.35;
+  }
+
+  .header-logo {
+    text-align: center;
+    margin: 0;
+    padding: 0;
+  }
+
+  .header-col-ar {
+    color: var(--official-blue);
+    text-align: right;
+    direction: rtl;
+    line-height: 1.25;
+  }
+
+  .header-logo img {
+    max-height: 124px;
+    width: auto;
     display: block;
     margin: 0 auto;
   }
 
   .brand-en { font-weight: 800; font-size: 17pt; white-space: nowrap; }
-  .brand-ar { font-weight: 800; font-size: 17pt; font-family: 'Cairo', sans-serif; white-space: nowrap; }
-  .sub-info { font-size: 8.5pt; color: #222; font-weight: 600; margin-top: 2px; }
+  .brand-ar {
+    font-weight: 800;
+    font-size: 18pt;
+    font-family: 'Cairo', sans-serif;
+    margin-bottom: 2px;
+    white-space: nowrap;
+  }
+  .sub-info { font-size: 10pt; color: #111; font-weight: 700; margin-top: 2px; white-space: nowrap; }
 
-  .meta-bar {
-    background: #f1f3f5;
-    border: 1px solid #ccc;
-    border-left: 10px solid var(--official-blue);
-    padding: 10px 15px;
-    margin-bottom: 20px;
+  .meta-top {
+    display: grid;
+    grid-template-columns: 1fr 185px 1fr;
+    gap: 10px;
+    margin-bottom: 10px;
+    align-items: stretch;
+  }
+
+  .meta-box {
+    border: 1.6px solid var(--frame);
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fff;
+    font-size: 10pt;
+    line-height: 1.35;
+  }
+
+  .meta-box table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .meta-box th,
+  .meta-box td {
+    border: 1px solid var(--frame);
+    padding: 6px 7px;
+    text-align: center;
+    vertical-align: middle;
+    font-weight: 700;
+  }
+
+  .meta-box td.value {
+    font-weight: 700;
+  }
+
+  .meta-box .customer-title {
+    text-align: right;
+    font-weight: 700;
+    background: #eef3ff;
+  }
+
+  .meta-box .customer-value {
+    text-align: right;
+    line-height: 1.45;
+    min-height: 92px;
+    vertical-align: top;
+  }
+
+  .qr-slot {
+    border: 1.6px solid var(--frame);
+    border-radius: 8px;
     display: flex;
-    justify-content: space-between;
-    font-size: 10.5pt;
+    align-items: center;
+    justify-content: center;
+    min-height: 174px;
+    background: #fff;
   }
 
-  /* Table */
-  .table-container { flex: 1; }
-  .inv-table { width: 100%; border-collapse: collapse; }
+  .qr-slot img {
+    width: 162px;
+    height: 162px;
+    display: block;
+  }
+
+  .qr-placeholder {
+    font-size: 10pt;
+    color: #5b6475;
+    font-weight: 700;
+    text-align: center;
+    line-height: 1.4;
+  }
+
+  .table-container { margin-top: 2px; }
+  .inv-table { width: 100%; border-collapse: collapse; direction: rtl; }
+
   .inv-table th {
-    background: var(--official-blue) !important;
-    color: #fff !important;
-    -webkit-print-color-adjust: exact;
-    padding: 8px;
-    font-size: 9pt;
-    text-align: left;
-  }
-  .inv-table td {
-    padding: 10px 8px;
-    border-bottom: 1px solid #eee;
-    font-size: 10.5pt;
+    background: #1d3a8a !important;
+    color: #fff;
+    border: 1px solid #999;
+    padding: 7px 5px;
+    font-size: 10pt;
+    text-align: center;
+    font-weight: 700;
   }
 
-  /* Totals & Signatures */
-  .footer-section { margin-top: auto; }
-  .totals-grid {
+  .inv-table td {
+    border: 1px solid #999;
+    padding: 7px 5px;
+    font-size: 10pt;
+    text-align: center;
+    vertical-align: middle;
+    background: #fff;
+  }
+
+  .inv-table td.name-cell {
+    text-align: right;
+    padding-right: 8px;
+  }
+
+  .footer-section { margin-top: auto; padding-top: 8px; }
+
+  .totals-box {
+    border: 1.6px solid var(--frame);
+    border-radius: 8px;
+    padding: 8px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    align-items: center;
+    background: #fff;
+  }
+
+  .amount-words-box {
+    border: 1.2px solid #6b7280;
+    border-radius: 8px;
+    min-height: 88px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    padding: 8px;
+  }
+
+  .amount-words {
+    font-size: 14pt;
+    font-weight: 800;
+    text-align: center;
+    line-height: 1.4;
+  }
+
+  .amount-words-label {
+    font-size: 10pt;
+    font-weight: 700;
+    margin-bottom: 3px;
+  }
+
+  .totals-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11pt;
+  }
+
+  .totals-table td {
+    padding: 2px 4px;
+    vertical-align: middle;
+    font-weight: 700;
+  }
+
+  .totals-table td.label {
+    text-align: right;
+    width: 70%;
+  }
+
+  .totals-table td.currency {
+    text-align: center;
+    width: 12%;
+  }
+
+  .totals-table td.value {
+    text-align: left;
+    width: 18%;
+  }
+
+  .sign-row {
+    margin-top: 10px;
+    display: grid;
+    grid-template-columns: 1.2fr 0.9fr 0.9fr 1fr;
+    gap: 10px;
+    align-items: start;
+    font-size: 10pt;
+    padding: 2px 0 0;
+  }
+
+  .sign-box-title {
+    font-size: 16pt;
+    font-weight: 700;
+    margin-bottom: 3px;
+  }
+
+  .sig-line {
+    border-top: 1.4px solid #111;
+    margin-top: 20px;
+    height: 1px;
+  }
+
+  .header-company-info {
+    margin-top: 2px;
+    padding: 2px 0 6px;
+    border-bottom: 2px solid var(--official-blue);
+    margin-bottom: 8px;
+    direction: rtl;
+  }
+
+  .header-company-line {
     display: flex;
     justify-content: flex-end;
-    margin-bottom: 35px;
-    padding-top: 10px;
-  }
-  .totals-table { width: 35%; }
-  .totals-table td { padding: 4px 0; font-size: 11pt; }
-  .grand-total {
-    font-size: 15pt;
-    font-weight: 900;
-    color: var(--official-blue);
-    border-top: 2px solid var(--official-blue);
-    padding-top: 5px !important;
+    align-items: center;
+    gap: 10px;
+    font-size: 9pt;
+    font-weight: 700;
+    color: #111827;
+    line-height: 1.2;
+    white-space: nowrap;
   }
 
-  .signatures { display: flex; justify-content: space-between; margin-bottom: 20px; }
-  .sig-box { 
-    width: 38%; 
-    border-top: 1.5px solid #000; 
-    text-align: center; 
-    padding-top: 6px;
-    font-size: 10pt;
-    font-weight: bold;
+  .header-company-line .sep {
+    color: #6b7280;
+    font-weight: 600;
   }
 
-  .bottom-address {
-    text-align: center;
-    font-size: 8.5pt;
-    border-top: 1px solid #ddd;
-    padding-top: 10px;
-    color: var(--official-blue);
-    font-weight: bold;
-    line-height: 1.4;
+  .header-company-line .label {
+    font-weight: 800;
   }
 </style>
 
@@ -177,45 +426,89 @@
   <div class="border-frame">
     <div class="header-section">
       <div class="header-col-en">
-        <div class="brand-en">DELTA AL-BATT'HA TRAD. CO.</div>
-        <div class="sub-info">Auto Spare Parts & Tools</div>
-        <div class="sub-info">C.R.: 1010264062</div>
+        <div class="brand-en">TAX Invoice</div>
+        <div class="brand-en" style="font-size:18pt;">فاتورة ضريبية</div>
       </div>
 
       <div class="header-logo">
         <img src="{% static 'inventory/images/logo.png' %}" alt="LOGO">
       </div>
-
       <div class="header-col-ar">
-        <div class="brand-ar" dir="rtl">شركة دلتا البطحاء للتجارة</div>
-        <div class="sub-info">لقطع غيار السيارات والمعدات</div>
-        <div class="sub-info" dir="rtl">س.ت : ١٠١٠٢٦٤٠٦٢</div>
+        <div class="brand-ar">شركة دلتا البطحاء للتجاره</div>
       </div>
     </div>
 
-    <div class="meta-bar">
-      <div>
-        <strong>Invoice:</strong> #{{ order.order_id }}<br>
-        <strong>Date:</strong> {{ order.created_at|date:"d/m/Y h:i A" }}
+    <div class="header-company-info">
+      <div class="header-company-line">
+        <span class="label">الرقم الضريبي:</span>
+        <span>311233693200003</span>
+        <span class="sep">|</span>
+        <span>966-966503150163</span>
+        <span class="sep">|</span>
+        <span>9696-114481304</span>
+        <span class="sep">|</span>
+        <span>الرئيسي - 0114468254</span>
+        <span class="sep">|</span>
+        <span>فرع مخرج 18 - 0566220876</span>
+        <span class="sep">|</span>
+        <span>فرع شارع الجمعية - 0503150163</span>
       </div>
-      <div style="text-align:right;">
-        <strong>Customer:</strong> 
-        {% if order.customer and order.customer.name != "0" %}
-          {{ order.customer.name }}
+    </div>
+
+    <div class="meta-top" dir="rtl">
+      <div class="meta-box">
+        <table>
+          <tr>
+            <th>رقم الفاتوره</th>
+            <th>التاريخ</th>
+            <th>طريقة الدفع</th>
+          </tr>
+          <tr>
+            <td class="value">
+              {{ order.order_id }}
+            </td>
+            <td class="value">{% if invoice %}{{ invoice.issue_date|date:'Y-m-d' }}{% else %}{{ order.created_at|date:'Y-m-d' }}{% endif %}</td>
+            <td class="value">{% if invoice %}{{ invoice.get_payment_method_display }}{% else %}نقدي{% endif %}</td>
+          </tr>
+        </table>
+        <table style="margin-top:4px;">
+          <tr>
+            <th>الرصيد الدائن حتى</th>
+            <th>الايام المخصومه</th>
+          </tr>
+          <tr>
+            <td class="value">{% if invoice and invoice.due_date %}{{ invoice.due_date|date:'Y-m-d' }}{% else %}-{% endif %}</td>
+            <td class="value">0</td>
+          </tr>
+        </table>
+      </div>
+
+      <div class="qr-slot">
+        {% if qr_image_data %}
+          <img src="{{ qr_image_data }}" alt="ZATCA QR">
         {% else %}
-          Walk-in Client
+          <div class="qr-placeholder">ZATCA QR<br>غير متوفر</div>
         {% endif %}
-        <br>
-        <strong>Phone:</strong>
-        {% if order.customer and order.customer.phone_number %}
-          {{ order.customer.phone_number }}
-        {% else %}
-          -
-        {% endif %}
-        <br>
-        {% if order.customer.car_model and order.customer.car_model != "0" %}
-          <small>{{ order.customer.car_model }}</small>
-        {% endif %}
+      </div>
+
+      <div class="meta-box">
+        <table>
+          <tr><th class="customer-title">العميل</th></tr>
+          <tr>
+            <td class="value customer-value">
+              {% if order.customer %}
+                {{ order.customer.id|default:'-' }}<br>
+                {{ order.customer.name|default:'Walk-in Client' }}
+              {% else %}
+                -<br>
+                Walk-in Client
+              {% endif %}
+              <br>
+              {% if order.customer and order.customer.phone_number %}{{ order.customer.phone_number }}{% endif %}
+              {% if invoice and invoice.customer_vat_number %}<br>VAT: {{ invoice.customer_vat_number }}{% endif %}
+            </td>
+          </tr>
+        </table>
       </div>
     </div>
 
@@ -223,64 +516,120 @@
       <table class="inv-table">
         <thead>
           <tr>
-            <th style="width:6%; text-align:center;">#</th>
-            <th style="width:44%;">Description</th>
-            <th style="width:20%; text-align:center;">Part No</th>
-            <th style="width:10%; text-align:center;">Qty</th>
-            <th style="width:20%; text-align:right;">Total</th>
+            <th>مسلسل</th>
+            <th>كود الصنف</th>
+            <th>رقم القطعه</th>
+            <th>اسم الصنف</th>
+            <th>الوحده</th>
+            <th>الكميه</th>
+            <th>السعر</th>
+            <th>الإجمالي قبل الضريبة</th>
+            <th>مبلغ الضريبة</th>
+            <th>الإجمالي بعد الضريبة</th>
+            <th>الموقع</th>
           </tr>
         </thead>
         <tbody>
-          {% for sale in order.items.all %}
-          <tr>
-            <td style="text-align:center;">{{ forloop.counter }}</td>
-            <td><strong>{{ sale.part.name }}</strong></td>
-            <td style="text-align:center;">{{ sale.part.part_number }}</td>
-            <td style="text-align:center;">{{ sale.quantity }}</td>
-            <td style="text-align:right;">{{ sale.total_revenue }}</td>
-          </tr>
-          {% endfor %}
+          {% if invoice %}
+            {% for line in invoice.lines.all %}
+            <tr>
+              <td>{{ line.serial_no }}</td>
+              <td>{{ line.item_code|default:'-' }}</td>
+              <td>{{ line.part_number|default:'-' }}</td>
+              <td class="name-cell">{{ line.item_name }}</td>
+              <td>{{ line.unit }}</td>
+              <td>{{ line.quantity|floatformat:2 }}</td>
+              <td>{{ line.unit_price|floatformat:2 }}</td>
+              <td>{{ line.total_before_vat|floatformat:2 }}</td>
+              <td>{{ line.vat_amount|floatformat:2 }}</td>
+              <td>{{ line.total_after_vat|floatformat:2 }}</td>
+              <td>{{ line.warehouse_location|default:'-' }}</td>
+            </tr>
+            {% endfor %}
+          {% else %}
+            {% for sale in order.items.all %}
+            <tr>
+              <td>{{ forloop.counter }}</td>
+              <td>{{ sale.part.category.name|default:'-' }}</td>
+              <td>{{ sale.part.part_number }}</td>
+              <td class="name-cell">{{ sale.part.name }}</td>
+              <td>حبة</td>
+              <td>{{ sale.quantity|floatformat:2 }}</td>
+              <td>{{ sale.price_at_sale|floatformat:2 }}</td>
+              <td>{{ sale.total_revenue|floatformat:2 }}</td>
+              <td>{{ order.vat_amount|floatformat:2 }}</td>
+              <td>{{ order.grand_total|floatformat:2 }}</td>
+              <td>-</td>
+            </tr>
+            {% endfor %}
+          {% endif %}
         </tbody>
       </table>
     </div>
 
-    <div class="footer-section">
-      <div class="totals-grid">
+    <div class="footer-section" dir="rtl">
+      <div class="totals-box">
+        <div class="amount-words-box">
+          <div class="amount-words-label">المبلغ كتابة</div>
+          <div class="amount-words">
+            {% if amount_in_words_ar %}
+              {{ amount_in_words_ar }} ريال سعودي فقط لا غير
+            {% elif invoice and invoice.total_in_words_ar %}
+              {{ invoice.total_in_words_ar }} ريال سعودي فقط لا غير
+            {% else %}
+              {{ order.grand_total }} ريال سعودي فقط لا غير
+            {% endif %}
+          </div>
+        </div>
+
         <table class="totals-table">
           <tr>
-            <td>Subtotal</td>
-            <td style="text-align:right;">{{ order.subtotal }}</td>
+            <td class="label">إجمالي المبلغ قبل الضريبة</td>
+            <td class="currency">SAR</td>
+            <td class="value">{% if invoice %}{{ invoice.subtotal_before_vat|floatformat:2 }}{% else %}{{ order.subtotal|floatformat:2 }}{% endif %}</td>
           </tr>
-          {% if order.discount_amount > 0 %}
-          <tr style="color:#c62828; font-weight: bold;">
-            <td>Discount</td>
-            <td style="text-align:right;">-{{ order.discount_amount }}</td>
-          </tr>
-          {% endif %}
           <tr>
-            <td>VAT (15%)</td>
-            <td style="text-align:right;">{{ order.vat_amount }}</td>
+            <td class="label">مبلغ الخصم</td>
+            <td class="currency">SAR</td>
+            <td class="value">{% if invoice %}{{ invoice.discount_amount|floatformat:2 }}{% else %}{{ order.discount_amount|floatformat:2 }}{% endif %}</td>
           </tr>
-          <tr class="grand-total">
-            <td>TOTAL</td>
-            <td style="text-align:right;">{{ order.grand_total }} SAR</td>
+          <tr>
+            <td class="label">الدفعه المقدمه</td>
+            <td class="currency">SAR</td>
+            <td class="value">{% if invoice %}{{ invoice.advance_payment|floatformat:2 }}{% else %}0.00{% endif %}</td>
+          </tr>
+          <tr>
+            <td class="label">إجمالي ضريبة القيمة المضافة</td>
+            <td class="currency">SAR</td>
+            <td class="value">{% if invoice %}{{ invoice.vat_amount|floatformat:2 }}{% else %}{{ order.vat_amount|floatformat:2 }}{% endif %}</td>
+          </tr>
+          <tr>
+            <td class="label">صافي المبلغ بعد الضريبة</td>
+            <td class="currency">SAR</td>
+            <td class="value">{% if invoice %}{{ invoice.net_amount|floatformat:2 }}{% else %}{{ order.grand_total|floatformat:2 }}{% endif %}</td>
           </tr>
         </table>
       </div>
 
-      <div class="signatures">
-        <div class="sig-box">Received By / المستلم</div>
-        <div class="sig-box">
-          Salesman: {{ order.seller.username|default:"Admin" }}
-          <br>
-          Employee ID: {{ order.seller.profile.employee_id|default:"N/A" }}
+      <div class="sign-row">
+        <div>
+          <div class="sign-box-title">ملاحظات التعليمات</div>
+          <div>{% if invoice %}{{ invoice.order.customer.car_model|default:'' }}{% else %}{{ order.customer.car_model|default:'' }}{% endif %}</div>
+        </div>
+        <div>
+          <div class="sign-box-title">المخزن</div>
+          <div>{{ order.branch.name|default:'-' }}</div>
+        </div>
+        <div>
+          <div class="sign-box-title">البائع</div>
+          <div>{{ order.seller.username|default:'Admin' }}</div>
+        </div>
+        <div>
+          <div class="sign-box-title">استلمت من قبل</div>
+          <div class="sig-line"></div>
         </div>
       </div>
 
-      <div class="bottom-address">
-        <div>الرياض - الصناعية الأولى - تليفون: ٠١١٤٤٦٨٢٥٤ | Riyadh - 1st. Ind. Area - Tel: 011 4468254</div>
-        <div>E-mail: dbpparts@gmail.com</div>
-      </div>
     </div>
   </div>
 </div>

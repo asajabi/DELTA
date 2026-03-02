@@ -1,0 +1,127 @@
+{% extends "inventory/base.html" %}
+
+{% block title %}Part Insight {{ part.part_number }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 px-lg-4">
+    <div class="delta-page-shell">
+        <section class="delta-hero d-flex flex-wrap align-items-start justify-content-between gap-2">
+            <div>
+                <h1 class="h4 mb-1">{{ part.part_number }} - {{ part.name }}</h1>
+                <p class="text-muted">Part insight snapshot for stock, sales, transfers, and purchases.</p>
+            </div>
+            <div class="page-actions">
+                <a href="{% url 'part_search' %}" class="btn btn-outline-secondary">العودة إلى البحث</a>
+            </div>
+        </section>
+
+        <div class="delta-kpi-grid">
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">Primary Barcode</span>
+                <span class="delta-kpi-value">{{ part.barcode|default:"-" }}</span>
+            </article>
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">SKU</span>
+                <span class="delta-kpi-value">{{ part.sku|default:"-" }}</span>
+            </article>
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">Linked Barcodes</span>
+                <span class="delta-kpi-value">{{ recent_barcodes|length }}</span>
+            </article>
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">Branch Stock Rows</span>
+                <span class="delta-kpi-value">{{ stock_rows|length }}</span>
+            </article>
+        </div>
+
+        <div class="row g-3 mt-1">
+            <div class="col-lg-4">
+                <div class="card delta-accent-card h-100">
+                    <div class="card-header">Stock by Branch</div>
+                    <div class="card-body">
+                        <ul class="delta-list-clean">
+                            {% for s in stock_rows %}
+                                <li>
+                                    <span>{{ s.branch.name }}</span>
+                                    <strong>{{ s.quantity }}</strong>
+                                </li>
+                            {% empty %}
+                                <li class="text-muted">No stock rows.</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-8">
+                <div class="card delta-accent-card h-100">
+                    <div class="card-header">Linked Barcodes</div>
+                    <div class="card-body">
+                        {% for b in recent_barcodes %}
+                            <span class="delta-chip me-1 mb-1">{{ b.barcode }}</span>
+                        {% empty %}
+                            <span class="text-muted">No extra barcodes linked.</span>
+                        {% endfor %}
+                        <div class="mt-3">
+                            <a href="{% url 'barcode_unmatched' %}" class="btn btn-outline-primary btn-sm"><i class="fa-solid fa-link me-1"></i> Link New Barcode</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3 mt-1">
+            <div class="col-lg-4">
+                <div class="card delta-accent-card h-100">
+                    <div class="card-header">Last 10 Sales</div>
+                    <div class="card-body">
+                        <ul class="delta-list-clean">
+                            {% for row in sales_rows %}
+                                <li>
+                                    <span>{{ row.date_sold|date:"Y-m-d" }} | {{ row.order.order_id|default:"-" }}</span>
+                                    <strong>{{ row.quantity }}</strong>
+                                </li>
+                            {% empty %}
+                                <li class="text-muted">No recent sales.</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="card delta-accent-card h-100">
+                    <div class="card-header">Last 10 Transfers</div>
+                    <div class="card-body">
+                        <ul class="delta-list-clean">
+                            {% for row in transfer_rows %}
+                                <li>
+                                    <span>#{{ row.id }} {{ row.source_branch.code }} -> {{ row.destination_branch.code }}</span>
+                                    <span class="delta-chip">{{ row.get_status_display }}</span>
+                                </li>
+                            {% empty %}
+                                <li class="text-muted">No transfer history.</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="card delta-accent-card h-100">
+                    <div class="card-header">Last 10 Purchases</div>
+                    <div class="card-body">
+                        <ul class="delta-list-clean">
+                            {% for row in receipt_rows %}
+                                <li>
+                                    <span>GRN-{{ row.receipt_id }}</span>
+                                    <strong>{{ row.qty_received }} @ {{ row.unit_cost }}</strong>
+                                </li>
+                            {% empty %}
+                                <li class="text-muted">No purchase history.</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

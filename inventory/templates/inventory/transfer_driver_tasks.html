@@ -4,14 +4,41 @@
 
 {% block content %}
 <div class="container-fluid px-3 px-lg-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h1 class="h4 mb-0">Driver Workflow Tasks</h1>
-        <a href="{% url 'transfer_list' %}" class="btn btn-outline-secondary">All Transfers</a>
-    </div>
+    <div class="delta-page-shell">
+        <section class="delta-hero d-flex flex-wrap align-items-start justify-content-between gap-2">
+            <div>
+                <h1 class="h4 mb-1">Driver Workflow Tasks | &#1605;&#1607;&#1575;&#1605; &#1575;&#1604;&#1587;&#1575;&#1574;&#1602;</h1>
+                <p class="text-muted">Confirm pickup and delivery transitions for approved inter-branch transfers.</p>
+            </div>
+            <div class="delta-action-tabs">
+                <a href="{% url 'transfer_list' %}" class="btn btn-outline-light">All Transfers</a>
+                <a href="{% url 'transfer_approvals' %}" class="btn btn-outline-light">Approvals</a>
+                <a href="{% url 'transfer_receive_list' %}" class="btn btn-outline-light">Receive</a>
+            </div>
+        </section>
 
-    <div class="card delta-card">
-        <div class="card-body">
-            <div class="table-responsive">
+        <div class="delta-kpi-grid">
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">Task Records</span>
+                <span class="delta-kpi-value">{{ page_obj.paginator.count|default:0 }}</span>
+            </article>
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">Current Page</span>
+                <span class="delta-kpi-value">{{ page_obj.number|default:1 }}</span>
+            </article>
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">Rows on Page</span>
+                <span class="delta-kpi-value">{{ transfers|length }}</span>
+            </article>
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">Current User</span>
+                <span class="delta-kpi-value">{{ user.username }}</span>
+            </article>
+        </div>
+
+        <div class="card delta-accent-card delta-table-panel mt-3">
+            <div class="card-header">Driver Task Queue</div>
+            <div class="card-body table-responsive">
                 <table class="table table-hover align-middle mb-0">
                     <thead>
                         <tr>
@@ -28,8 +55,11 @@
                     <tbody>
                     {% for transfer in transfers %}
                         <tr>
-                            <td>{{ transfer.id }}</td>
-                            <td>{{ transfer.part.name }} <span class="text-muted small">({{ transfer.part.part_number }})</span></td>
+                            <td><strong>{{ transfer.id }}</strong></td>
+                            <td>
+                                {{ transfer.part.name }}
+                                <div class="small text-muted">{{ transfer.part.part_number }}</div>
+                            </td>
                             <td>{{ transfer.quantity }}</td>
                             <td>{{ transfer.source_branch.name }}</td>
                             <td>{{ transfer.destination_branch.name }}</td>
@@ -38,48 +68,54 @@
                                     <span class="badge text-bg-primary">Approved</span>
                                 {% elif transfer.status == 'picked_up' %}
                                     <span class="badge text-bg-warning">Picked Up</span>
+                                {% else %}
+                                    <span class="delta-chip">{{ transfer.get_status_display }}</span>
                                 {% endif %}
                             </td>
                             <td>{{ transfer.driver.username|default:'-' }}</td>
-                            <td>
+                            <td style="min-width: 220px;">
                                 {% if transfer.status == 'approved' %}
-                                    <form method="post" action="{% url 'transfer_mark_picked_up' transfer.id %}" class="d-inline">
+                                    <form method="post" action="{% url 'transfer_mark_picked_up' transfer.id %}" class="delta-soft-panel">
                                         {% csrf_token %}
                                         <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                                        <input type="text" name="reason" class="form-control form-control-sm mb-1" placeholder="Pickup reason" required>
-                                        <button class="btn btn-sm btn-outline-primary" type="submit">Pickup</button>
+                                        <label class="form-label small mb-1">Pickup reason</label>
+                                        <input type="text" name="reason" class="form-control form-control-sm mb-2" placeholder="Reason required" required>
+                                        <button class="btn btn-sm btn-outline-primary w-100" type="submit">Mark Picked Up</button>
                                     </form>
                                 {% elif transfer.status == 'picked_up' %}
-                                    <form method="post" action="{% url 'transfer_mark_delivered' transfer.id %}" class="d-inline">
+                                    <form method="post" action="{% url 'transfer_mark_delivered' transfer.id %}" class="delta-soft-panel">
                                         {% csrf_token %}
                                         <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                                        <input type="text" name="reason" class="form-control form-control-sm mb-1" placeholder="Delivery reason" required>
-                                        <button class="btn btn-sm btn-outline-success" type="submit">Delivered</button>
+                                        <label class="form-label small mb-1">Delivery reason</label>
+                                        <input type="text" name="reason" class="form-control form-control-sm mb-2" placeholder="Reason required" required>
+                                        <button class="btn btn-sm btn-outline-success w-100" type="submit">Mark Delivered</button>
                                     </form>
+                                {% else %}
+                                    <span class="delta-chip">No action required</span>
                                 {% endif %}
                             </td>
                         </tr>
                     {% empty %}
-                        <tr><td colspan="8" class="text-center text-muted py-5">No driver tasks right now.</td></tr>
+                        <tr><td colspan="8" class="py-4"><div class="delta-empty">No driver tasks right now.</div></td></tr>
                     {% endfor %}
                     </tbody>
                 </table>
             </div>
         </div>
-    </div>
 
-    {% if page_obj and page_obj.paginator.num_pages > 1 %}
-        <nav class="mt-4">
-            <ul class="pagination justify-content-center">
-                {% if page_obj.has_previous %}
-                    <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a></li>
-                {% endif %}
-                <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
-                {% if page_obj.has_next %}
-                    <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a></li>
-                {% endif %}
-            </ul>
-        </nav>
-    {% endif %}
+        {% if page_obj and page_obj.paginator.num_pages > 1 %}
+            <nav class="mt-4">
+                <ul class="pagination justify-content-center">
+                    {% if page_obj.has_previous %}
+                        <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a></li>
+                    {% endif %}
+                    <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+                    {% if page_obj.has_next %}
+                        <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a></li>
+                    {% endif %}
+                </ul>
+            </nav>
+        {% endif %}
+    </div>
 </div>
 {% endblock %}

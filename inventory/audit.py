@@ -32,6 +32,8 @@ def _actor_employee_id(actor) -> str:
 def log_audit_event(
     *,
     actor=None,
+    request=None,
+    ip_address: str | None = None,
     action: str,
     reason: str,
     object_type: str,
@@ -48,6 +50,12 @@ def log_audit_event(
     after_payload = _to_json_safe(after or {})
     if isinstance(after_payload, dict):
         after_payload.setdefault("reason", clean_reason)
+    resolved_ip = ip_address
+    if not resolved_ip and request is not None:
+        resolved_ip = (
+            request.META.get("HTTP_X_FORWARDED_FOR", "").split(",")[0].strip()
+            or request.META.get("REMOTE_ADDR", "")
+        )
 
     return AuditLog.objects.create(
         actor=actor_user,
@@ -56,8 +64,12 @@ def log_audit_event(
         action=action,
         reason=clean_reason,
         object_type=object_type,
+        model_name=object_type,
         object_id=str(object_id or ""),
+        ip_address=resolved_ip or None,
         branch=branch,
         before_data=_to_json_safe(before or {}),
         after_data=after_payload,
+        old_values=_to_json_safe(before or {}),
+        new_values=after_payload,
     )

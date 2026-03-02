@@ -1,6 +1,6 @@
 ﻿{% extends 'inventory/base.html' %}
 
-{% block title %}Checkout{% endblock %}
+{% block title %}إتمام البيع{% endblock %}
 
 {% block content %}
 <div class="container-fluid px-3 px-lg-4">
@@ -42,7 +42,7 @@
                             </tbody>
                         </table>
                     </div>
-                    <a href="{% url 'pos_console' %}" class="btn btn-outline-secondary"><i class="fa-solid fa-arrow-left"></i> العودة إلى POS</a>
+                    <a href="{% url 'pos_console' %}" class="btn btn-outline-secondary"><i class="fa-solid fa-arrow-left"></i> العودة إلى نقطة البيع</a>
                 </div>
             </div>
         </div>
@@ -55,44 +55,72 @@
                         <h2 class="h6 mb-3">تفاصيل الدفع</h2>
 
                         <div class="d-flex justify-content-between mb-2">
-                            <span>Subtotal</span>
+                            <span>الإجمالي الفرعي</span>
                             <strong><span id="subtotal-display" data-value="{{ subtotal|floatformat:2 }}">{{ subtotal|floatformat:2 }}</span> SAR</strong>
                         </div>
 
                         <div class="mb-2">
-                            <label for="discount-input" class="form-label">Discount (SAR)</label>
+                            <label for="discount-input" class="form-label">الخصم (SAR)</label>
                             <input id="discount-input" type="number" name="discount" min="0" step="0.01" class="form-control" value="0.00">
                         </div>
 
                         <div class="d-flex justify-content-between text-muted small mb-1">
-                            <span>VAT {{ vat_rate_percent }}%</span>
+                            <span>ضريبة القيمة المضافة {{ vat_rate_percent }}%</span>
                             <span><span id="vat-display">0.00</span> SAR</span>
                         </div>
 
                         <div class="d-flex justify-content-between border-top pt-2 mt-2">
-                            <span class="fw-semibold">Grand Total</span>
+                            <span class="fw-semibold">الإجمالي النهائي</span>
                             <strong class="text-primary"><span id="total-display">0.00</span> SAR</strong>
                         </div>
 
                         {% if is_manager %}
                             <div class="alert alert-info mt-3 mb-0 py-2">
-                                Estimated Profit: <strong id="profit-display" data-original="{{ estimated_profit|floatformat:2 }}">{{ estimated_profit|floatformat:2 }}</strong> SAR
+                                الربح التقديري: <strong id="profit-display" data-original="{{ estimated_profit|floatformat:2 }}">{{ estimated_profit|floatformat:2 }}</strong> SAR
                             </div>
                         {% endif %}
 
                         <hr>
                         <h2 class="h6 mb-2">بيانات العميل</h2>
                         <div class="mb-2">
-                            <label class="form-label">Phone</label>
+                            <label class="form-label">طريقة الدفع</label>
+                            <select name="payment_method" class="form-select">
+                                <option value="cash">نقدي</option>
+                                <option value="card">بطاقة</option>
+                                <option value="transfer">تحويل</option>
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">تاريخ الاستحقاق (اختياري)</label>
+                            <input type="date" name="due_date" class="form-control">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">الهاتف</label>
                             <input type="text" name="phone_number" class="form-control" placeholder="0501234567">
                         </div>
                         <div class="mb-2">
-                            <label class="form-label">Name</label>
-                            <input type="text" name="customer_name" class="form-control" placeholder="Customer name">
+                            <label class="form-label">الاسم</label>
+                            <input type="text" name="customer_name" class="form-control" placeholder="اسم العميل">
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">Car Model</label>
+                            <label class="form-label">موديل السيارة</label>
                             <input type="text" name="customer_car" class="form-control" placeholder="Camry 2018">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">الرقم الضريبي للعميل (اختياري)</label>
+                            <input type="text" name="customer_vat_number" class="form-control" placeholder="3xxxxxxxxxxxxxx">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">دفعة مقدمة (اختياري)</label>
+                            <input type="number" name="advance_payment" min="0" step="0.01" class="form-control" value="0.00">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">المبلغ كتابة بالعربي (اختياري)</label>
+                            <div class="input-group">
+                                <textarea id="total-in-words-input" name="total_in_words_ar" rows="2" class="form-control" placeholder="مثال: مئتان وستة وسبعون" required></textarea>
+                                <button type="button" id="generate-words-btn" class="btn btn-outline-secondary">توليد تلقائي</button>
+                            </div>
+                            <div class="form-text">اكتب أو ولّد كلمات الرقم فقط؛ لاحقة «ريال سعودي فقط لا غير» تضاف تلقائيًا في الفاتورة.</div>
                         </div>
 
                         <button type="submit" class="btn btn-success btn-lg w-100" {% if not cart_items %}disabled{% endif %}>
@@ -115,10 +143,32 @@
     const vatEl = document.getElementById('vat-display');
     const totalEl = document.getElementById('total-display');
     const profitEl = document.getElementById('profit-display');
+    const wordsInput = document.getElementById('total-in-words-input');
+    const generateWordsBtn = document.getElementById('generate-words-btn');
+    let wordsTouched = false;
+    let wordsTimer = null;
 
     function toNumber(value) {
         const n = parseFloat(value);
         return Number.isFinite(n) ? n : 0;
+    }
+
+    async function generateAmountWords(force) {
+        if (!wordsInput) return;
+        if (wordsTouched && !force) return;
+        const amount = toNumber(totalEl.innerText).toFixed(2);
+        try {
+            const response = await fetch("{% url 'invoice_amount_words' %}?amount=" + encodeURIComponent(amount), {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            if (!response.ok) return;
+            const data = await response.json();
+            const words = String(data.words_ar || '').trim();
+            if (!words) return;
+            wordsInput.value = words;
+        } catch (_) {
+            // Manual typing fallback remains available.
+        }
     }
 
     function updateTotals() {
@@ -142,10 +192,28 @@
             profitEl.innerText = newProfit.toFixed(2);
             profitEl.classList.toggle('text-danger', newProfit < 0);
         }
+
+        if (wordsTimer) window.clearTimeout(wordsTimer);
+        wordsTimer = window.setTimeout(function () {
+            generateAmountWords(false);
+        }, 220);
+    }
+
+    if (wordsInput) {
+        wordsInput.addEventListener('input', function () {
+            wordsTouched = true;
+        });
+    }
+    if (generateWordsBtn) {
+        generateWordsBtn.addEventListener('click', function () {
+            wordsTouched = false;
+            generateAmountWords(true);
+        });
     }
 
     discountEl.addEventListener('input', updateTotals);
     updateTotals();
+    generateAmountWords(true);
 })();
 </script>
 {% endblock %}

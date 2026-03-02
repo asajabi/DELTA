@@ -1,0 +1,61 @@
+﻿.delta-part-picker {
+    position: relative;
+}
+
+.delta-part-picker-menu {
+    display: none;
+    position: absolute;
+    inset-inline: 0;
+    top: calc(100% + 0.22rem);
+    z-index: 1085;
+    max-height: 16.25rem;
+    overflow-y: auto;
+    border: 1px solid #b7c9dd;
+    border-radius: 0.72rem;
+    background: #ffffff;
+    box-shadow: 0 12px 28px rgba(13, 42, 68, 0.18);
+}
+
+.delta-part-picker-menu.show {
+    display: block;
+}
+
+.delta-part-picker-option {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    padding: 0.54rem 0.68rem;
+    text-align: start;
+    color: #133559;
+    border-bottom: 1px solid #eef3f8;
+}
+
+[dir="rtl"] .delta-part-picker-option {
+    text-align: right;
+}
+
+.delta-part-picker-option:last-child {
+    border-bottom: 0;
+}
+
+.delta-part-picker-option:hover,
+.delta-part-picker-option:focus,
+.delta-part-picker-option.active {
+    background: #eef6ff;
+    color: #0f2f4f;
+}
+
+.delta-part-picker-title {
+    display: block;
+    font-weight: 700;
+}
+
+.delta-part-picker-empty {
+    padding: 0.62rem 0.68rem;
+    color: #5e748f;
+    font-size: 0.92rem;
+}
+
+.part-picker-help {
+    margin-top: 0.2rem;
+}

@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="utf-8">
+    <title>فاتورة ضريبية</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 10mm;
+        }
+        body {
+            margin: 0;
+            color: #111827;
+            font-family: "Noto Naskh Arabic", "Amiri", "Tahoma", sans-serif;
+            font-size: 12px;
+        }
+        .sheet {
+            width: 100%;
+        }
+        .invoice-wrap {
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            padding: 10px;
+        }
+        .header-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .box {
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            padding: 8px;
+            min-height: 128px;
+        }
+        .label {
+            color: #4b5563;
+            font-size: 11px;
+        }
+        .value {
+            font-weight: 700;
+        }
+        .title-en {
+            font-size: 20px;
+            font-weight: 700;
+            margin: 0 0 4px;
+            text-align: left;
+            direction: ltr;
+        }
+        .title-ar {
+            font-size: 20px;
+            font-weight: 700;
+            margin: 0 0 8px;
+        }
+        .meta-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 2px;
+        }
+        .meta-row .k {
+            color: #374151;
+        }
+        .meta-row .v {
+            font-weight: 700;
+        }
+        .qr-wrap {
+            text-align: center;
+            margin-top: 8px;
+        }
+        .qr-wrap img {
+            width: 122px;
+            height: 122px;
+        }
+        .items {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 8px;
+            direction: rtl;
+        }
+        .items th,
+        .items td {
+            border: 1px solid #d1d5db;
+            padding: 6px 4px;
+            text-align: center;
+            vertical-align: middle;
+        }
+        .items th {
+            background: #f3f4f6;
+            font-weight: 700;
+        }
+        .items td.name {
+            text-align: right;
+        }
+        .totals {
+            margin-top: 10px;
+            width: 52%;
+            margin-right: auto;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            padding: 8px;
+        }
+        .totals-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 3px 0;
+            border-bottom: 1px dashed #e5e7eb;
+        }
+        .totals-row:last-child {
+            border-bottom: 0;
+            font-weight: 700;
+        }
+        .words {
+            margin-top: 8px;
+            font-size: 11px;
+            color: #374151;
+        }
+        .footer-grid {
+            margin-top: 14px;
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+        }
+        .sig {
+            border-top: 1px solid #9ca3af;
+            padding-top: 4px;
+            min-height: 40px;
+        }
+        .notes {
+            margin-top: 10px;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            min-height: 44px;
+            padding: 6px;
+        }
+        .copyright {
+            margin-top: 8px;
+            color: #6b7280;
+            font-size: 10px;
+            text-align: center;
+        }
+        .thermal .invoice-wrap {
+            max-width: 78mm;
+            margin: 0 auto;
+            border-radius: 0;
+            border: 0;
+            padding: 4px;
+        }
+        .thermal .header-grid {
+            grid-template-columns: 1fr;
+        }
+        .thermal .totals {
+            width: 100%;
+        }
+        .thermal .footer-grid {
+            grid-template-columns: 1fr;
+        }
+    </style>
+</head>
+<body>
+<div class="sheet {% if layout_mode == 'thermal' %}thermal{% endif %}">
+    <div class="invoice-wrap">
+        <div class="header-grid">
+            <section class="box">
+                <div class="label">بيانات الشركة</div>
+                <div class="value">{{ company_name_ar }}</div>
+                <div style="direction:ltr; text-align:left;" class="value">{{ company_name_en }}</div>
+                <div class="meta-row"><span class="k">Commercial Registration:</span><span class="v">{{ company_cr|default:"-" }}</span></div>
+                <div class="meta-row"><span class="k">VAT Registration:</span><span class="v">{{ company_vat|default:"-" }}</span></div>
+                <div class="meta-row"><span class="k">Branch:</span><span class="v">{{ invoice.branch.name }}</span></div>
+                <div class="meta-row"><span class="k">Address:</span><span class="v">{{ branch_address|default:"-" }}</span></div>
+                <div class="meta-row"><span class="k">Phone:</span><span class="v">{{ phone_1|default:"-" }}{% if phone_2 %} / {{ phone_2 }}{% endif %}</span></div>
+                {% if email %}<div class="meta-row"><span class="k">Email:</span><span class="v">{{ email }}</span></div>{% endif %}
+                {% if website %}<div class="meta-row"><span class="k">Website:</span><span class="v">{{ website }}</span></div>{% endif %}
+            </section>
+            <section class="box">
+                <h1 class="title-en">TAX Invoice</h1>
+                <h2 class="title-ar">فاتورة ضريبية</h2>
+                <div class="meta-row"><span class="k">Invoice Number</span><span class="v">{{ invoice.branch.code }}-{{ invoice.invoice_number|stringformat:"06d" }}</span></div>
+                <div class="meta-row"><span class="k">Invoice UUID</span><span class="v">{{ invoice.invoice_uuid }}</span></div>
+                <div class="meta-row"><span class="k">Issue Date</span><span class="v">{{ invoice.issue_date|date:"Y-m-d" }}</span></div>
+                <div class="meta-row"><span class="k">Issue Time</span><span class="v">{{ invoice.issue_time|time:"H:i:s" }}</span></div>
+                <div class="meta-row"><span class="k">Payment Method</span><span class="v">{{ invoice.get_payment_method_display }}</span></div>
+                <div class="meta-row"><span class="k">Due Date</span><span class="v">{{ invoice.due_date|date:"Y-m-d"|default:"-" }}</span></div>
+                <div class="meta-row"><span class="k">Customer Name</span><span class="v">{{ invoice.customer_name|default:"Walk-in Customer" }}</span></div>
+                <div class="meta-row"><span class="k">Customer Phone</span><span class="v">{{ invoice.order.customer.phone_number|default:"-" }}</span></div>
+                <div class="meta-row"><span class="k">Customer VAT</span><span class="v">{{ invoice.customer_vat_number|default:"-" }}</span></div>
+                <div class="qr-wrap">
+                    {% if qr_image_data %}
+                        <img src="{{ qr_image_data }}" alt="ZATCA QR">
+                    {% endif %}
+                </div>
+            </section>
+        </div>
+
+        <table class="items">
+            <thead>
+            <tr>
+                <th>مسلسل</th>
+                <th>كود الصنف</th>
+                <th>رقم القطعة</th>
+                <th>اسم الصنف</th>
+                <th>الوحدة</th>
+                <th>الكمية</th>
+                <th>السعر</th>
+                <th>الإجمالي قبل الضريبة</th>
+                <th>مبلغ الضريبة</th>
+                <th>الإجمالي بعد الضريبة</th>
+                <th>الموقع / المخزن</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for line in invoice.lines.all %}
+                <tr>
+                    <td>{{ line.serial_no }}</td>
+                    <td>{{ line.item_code|default:"-" }}</td>
+                    <td>{{ line.part_number|default:"-" }}</td>
+                    <td class="name">{{ line.item_name }}</td>
+                    <td>{{ line.unit }}</td>
+                    <td>{{ line.quantity }}</td>
+                    <td>{{ line.unit_price|floatformat:2 }}</td>
+                    <td>{{ line.total_before_vat|floatformat:2 }}</td>
+                    <td>{{ line.vat_amount|floatformat:2 }}</td>
+                    <td>{{ line.total_after_vat|floatformat:2 }}</td>
+                    <td>{{ line.warehouse_location|default:"-" }}</td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="11">لا توجد عناصر</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+
+        <section class="totals">
+            <div class="totals-row"><span>إجمالي المبلغ قبل الضريبة</span><span>{{ invoice.subtotal_before_vat|floatformat:2 }} SAR</span></div>
+            <div class="totals-row"><span>مبلغ الخصم</span><span>{{ invoice.discount_amount|floatformat:2 }} SAR</span></div>
+            <div class="totals-row"><span>الدفعة المقدمة</span><span>{{ invoice.advance_payment|floatformat:2 }} SAR</span></div>
+            <div class="totals-row"><span>إجمالي ضريبة القيمة المضافة</span><span>{{ invoice.vat_amount|floatformat:2 }} SAR</span></div>
+            <div class="totals-row"><span>صافي المبلغ بعد الضريبة</span><span>{{ invoice.net_amount|floatformat:2 }} SAR</span></div>
+            <div class="words"><strong>المبلغ كتابة:</strong> {{ amount_in_words_ar|default:"-" }} ريال سعودي فقط لا غير</div>
+        </section>
+
+        <div class="footer-grid">
+            <div class="sig">المخزن: {{ invoice.branch.name }}</div>
+            <div class="sig">البائع: {{ invoice.order.seller.username|default:"-" }}</div>
+            <div class="sig">استلمت من قبل: __________________</div>
+        </div>
+        <div class="notes">Notes: {{ invoice.order.customer.car_model|default:"-" }}</div>
+        <div class="copyright">© {% now "Y" %} DELTA POS</div>
+    </div>
+</div>
+</body>
+</html>

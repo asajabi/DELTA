@@ -1,44 +1,498 @@
 ﻿{% extends 'inventory/base.html' %}
 
-{% block title %}البحث عن القطع | DELTA{% endblock %}
+{% block title %}البحث عن القطع | دلتا{% endblock %}
+
+{% block head_extra %}
+<style>
+    :root {
+        --page-bg: #e9edf3;
+        --ink: #0d1f34;
+        --muted: #6b7f99;
+        --panel-bg: #ffffff;
+        --panel-border: #c9d6e8;
+        --hero-ink: #ffffff;
+        --hero-border: rgba(173, 204, 238, 0.3);
+        --hero-shadow: rgba(3, 24, 45, 0.42);
+        --accent: #1f82d4;
+        --accent-soft: #e8f3ff;
+        --success-bg: #def4e8;
+        --success-ink: #11683f;
+        --danger-bg: #fde5e7;
+        --danger-ink: #92252b;
+    }
+
+    .search-shell {
+        max-width: 1540px;
+        padding-top: 1rem;
+        padding-bottom: 1.75rem;
+    }
+
+    .search-hero {
+        border-radius: 1.25rem;
+        border: 1px solid var(--hero-border);
+        background:
+            radial-gradient(circle at 90% 8%, rgba(108, 180, 255, 0.33) 0, rgba(108, 180, 255, 0.08) 34%, transparent 54%),
+            radial-gradient(circle at 10% 75%, rgba(111, 132, 254, 0.28) 0, rgba(111, 132, 254, 0.08) 29%, transparent 54%),
+            linear-gradient(128deg, #071a2e 0%, #0d2d4f 44%, #15456e 72%, #1b5e93 100%);
+        color: var(--hero-ink);
+        box-shadow: 0 20px 35px -10px var(--hero-shadow);
+        padding: 1.1rem 1.2rem;
+        margin-bottom: 1rem;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .search-hero::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(90deg, transparent 0, rgba(255, 255, 255, 0.06) 52%, transparent 100%);
+        pointer-events: none;
+    }
+
+    .search-hero h1 {
+        margin: 0;
+        font-family: "Tajawal", "Segoe UI", sans-serif;
+        font-weight: 700;
+        letter-spacing: 0.015em;
+    }
+
+    .search-hero p {
+        margin: 0.36rem 0 0;
+        color: rgba(240, 247, 255, 0.93);
+    }
+
+    .search-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.55rem;
+        align-items: center;
+        position: relative;
+        z-index: 1;
+    }
+
+    .search-action-btn {
+        border-radius: 0.74rem;
+        font-weight: 600;
+        padding-inline: 0.95rem;
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        background: rgba(255, 255, 255, 0.92);
+        color: #0d2f52;
+    }
+
+    .search-action-btn:hover {
+        background: #ffffff;
+        color: #082747;
+    }
+
+    .search-cart-btn {
+        position: relative;
+        border-radius: 0.74rem;
+        font-weight: 700;
+        padding-inline: 1rem;
+        border: 1px solid #2f9cff;
+        background: linear-gradient(180deg, #2995f2, #1d78c4);
+        color: #fff;
+    }
+
+    .search-cart-btn:hover {
+        background: linear-gradient(180deg, #3ea2fb, #247fc9);
+        color: #fff;
+    }
+
+    #cart-badge {
+        font-size: 0.7rem;
+        box-shadow: 0 0 0 2px #0f385f;
+    }
+
+    .search-panel {
+        border: 1px solid var(--panel-border);
+        border-radius: 1rem;
+        background: linear-gradient(180deg, #fefefe 0%, #f8fbff 100%);
+        box-shadow: 0 10px 22px rgba(13, 38, 67, 0.09);
+        height: 100%;
+    }
+
+    .search-panel .card-body {
+        padding: 1rem;
+    }
+
+    .search-panel-title {
+        font-size: 1.08rem;
+        font-weight: 700;
+        margin-bottom: 0.2rem;
+        color: var(--ink);
+    }
+
+    .search-muted {
+        color: var(--muted);
+        margin-bottom: 0.8rem;
+    }
+
+    .search-catalog-btn {
+        border-radius: 0.68rem;
+        font-weight: 600;
+        border-color: #8ea7c4;
+        color: #1b3f64;
+        background: #fff;
+    }
+
+    .search-catalog-btn:hover {
+        background: #f0f6fd;
+        border-color: #6e92ba;
+        color: #153755;
+    }
+
+    .search-form .form-label {
+        font-size: 0.84rem;
+        color: #405c7d;
+        margin-bottom: 0.35rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+    }
+
+    .search-input,
+    .search-form .form-control,
+    .search-form .btn {
+        min-height: 42px;
+        border-radius: 0.72rem;
+    }
+
+    .search-input {
+        border: 1px solid #acc0d9;
+        background: #fff;
+        font-size: 1rem;
+        color: #13253d;
+    }
+
+    .search-input:focus,
+    .search-form .form-control:focus {
+        box-shadow: 0 0 0 0.22rem rgba(40, 122, 196, 0.15);
+        border-color: #6e96c4;
+    }
+
+    .search-camera-btn {
+        border: 1px solid #acc0d9;
+        border-inline-start: 0;
+        background: linear-gradient(180deg, #f9fcff, #edf4fd);
+        color: #28496b;
+    }
+
+    .search-camera-btn:hover {
+        background: #e7f1fd;
+        color: #1d4167;
+    }
+
+    #part-search-suggest {
+        border: 1px solid #c7d7eb;
+        border-radius: 0.72rem;
+        overflow: hidden;
+        box-shadow: 0 14px 22px rgba(12, 42, 74, 0.14);
+    }
+
+    #part-search-suggest .list-group-item {
+        background: #fff;
+        border-color: #e3ecf7;
+    }
+
+    #part-search-suggest .list-group-item:hover {
+        background: #f2f8ff;
+    }
+
+    .search-submit-btn {
+        font-weight: 700;
+        letter-spacing: 0.01em;
+        background: linear-gradient(180deg, #298fe6, #1b73be);
+        border: 1px solid #287dc8;
+    }
+
+    .search-submit-btn:hover {
+        background: linear-gradient(180deg, #3a9df0, #247ec5);
+        border-color: #2f87ce;
+    }
+
+    .results-meta {
+        border: 1px solid #c7d8eb;
+        border-radius: 0.9rem;
+        background: linear-gradient(180deg, #f7fbff 0%, #eef5fd 100%);
+        color: #23486d;
+        padding: 0.56rem 0.8rem;
+        margin-bottom: 0.75rem;
+        font-weight: 700;
+    }
+
+    .part-result-card {
+        border: 1px solid #cad9ea;
+        border-radius: 0.95rem;
+        background: linear-gradient(180deg, #ffffff 0%, #f9fcff 100%);
+        box-shadow: 0 10px 24px rgba(10, 36, 64, 0.08);
+        transition: transform 0.14s ease, box-shadow 0.14s ease;
+    }
+
+    .part-result-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 14px 28px rgba(10, 36, 64, 0.12);
+    }
+
+    .part-result-card .card-body {
+        padding: 0.95rem;
+    }
+
+    .part-title {
+        font-size: 1.15rem;
+        margin: 0;
+        color: var(--ink);
+        font-weight: 700;
+    }
+
+    .part-number-pill {
+        display: inline-block;
+        margin-top: 0.3rem;
+        border: 1px solid #bfd5ef;
+        background: var(--accent-soft);
+        border-radius: 999px;
+        padding: 0.14rem 0.64rem;
+        color: #11426f;
+        font-size: 0.78rem;
+        font-weight: 700;
+    }
+
+    .part-price {
+        text-align: end;
+    }
+
+    .part-price .main {
+        font-size: 1.32rem;
+        line-height: 1.1;
+        color: #0f4f89;
+        font-weight: 800;
+    }
+
+    .part-price .sub {
+        margin-top: 0.12rem;
+        color: var(--muted);
+        font-size: 0.8rem;
+    }
+
+    .result-table {
+        margin-top: 0.45rem;
+        border: 1px solid #dbe6f2;
+        border-radius: 0.72rem;
+        overflow: hidden;
+    }
+
+    .result-table thead th {
+        font-size: 0.77rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #456487;
+        border-bottom: 1px solid #d4e1ef;
+        background: #f3f8ff;
+        font-weight: 700;
+    }
+
+    .result-table td,
+    .result-table th {
+        padding-top: 0.58rem;
+        padding-bottom: 0.58rem;
+        vertical-align: middle;
+    }
+
+    .result-table tbody tr:nth-child(even) {
+        background: #fbfdff;
+    }
+
+    .qty-badge {
+        min-width: 50px;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-align: center;
+        display: inline-block;
+        padding: 0.2rem 0.5rem;
+    }
+
+    .qty-badge.good {
+        background: var(--success-bg);
+        color: var(--success-ink);
+        border: 1px solid #bde5ce;
+    }
+
+    .qty-badge.low {
+        background: var(--danger-bg);
+        color: var(--danger-ink);
+        border: 1px solid #f1bcc3;
+    }
+
+    .add-cart-form .form-control {
+        border-radius: 0.62rem;
+        min-height: 34px;
+        border-color: #b8cce2;
+    }
+
+    .add-cart-form .btn {
+        border-radius: 0.62rem;
+        min-height: 34px;
+    }
+
+    .search-empty {
+        border: 1px dashed #b7cde5;
+        border-radius: 1rem;
+        background:
+            radial-gradient(circle at 92% 12%, rgba(39, 145, 234, 0.09) 0%, rgba(39, 145, 234, 0.02) 35%, transparent 60%),
+            linear-gradient(180deg, #f9fcff 0%, #eff6ff 100%);
+        color: #476481;
+    }
+
+    .search-empty .card-body {
+        padding: 2rem 1rem;
+    }
+
+    .starter-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.75rem;
+        margin-top: 0.85rem;
+    }
+
+    .starter-item {
+        border: 1px solid #cadbec;
+        border-radius: 0.84rem;
+        background: #ffffff;
+        padding: 0.72rem;
+        min-height: 96px;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    }
+
+    .starter-item .title {
+        font-weight: 700;
+        color: #153656;
+        margin-bottom: 0.22rem;
+    }
+
+    .starter-item .text {
+        font-size: 0.84rem;
+        color: #5b7390;
+    }
+
+    @media (max-width: 992px) {
+        .search-actions {
+            width: 100%;
+        }
+
+        .search-actions .btn,
+        .search-actions a {
+            flex: 1;
+        }
+
+        .starter-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .result-table table {
+            min-width: 100%;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .search-shell {
+            padding-top: 0.5rem;
+            padding-bottom: 1rem;
+        }
+
+        .search-hero {
+            padding: 0.9rem;
+            border-radius: 0.95rem;
+        }
+
+        .search-hero h1 {
+            font-size: 1.45rem;
+        }
+
+        .search-hero .d-flex {
+            align-items: stretch !important;
+        }
+
+        .search-actions .btn,
+        .search-actions a {
+            flex: 1 1 calc(50% - 0.3rem);
+        }
+
+        .part-price {
+            text-align: start;
+        }
+
+        .part-price .main {
+            font-size: 1.15rem;
+        }
+
+        .add-cart-form {
+            flex-wrap: wrap;
+        }
+
+        .add-cart-form .form-control {
+            max-width: 100% !important;
+            flex: 1 1 100px;
+        }
+    }
+
+    @media (max-width: 576px) {
+        .search-hero h1 {
+            font-size: 1.24rem;
+        }
+
+        .search-actions .btn,
+        .search-actions a {
+            flex: 1 1 100%;
+        }
+
+        .search-panel .card-body {
+            padding: 0.8rem;
+        }
+    }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="container-fluid px-3 px-lg-4">
-    <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
-        <div>
-            <h1 class="h4 mb-1">البحث عن قطع الغيار</h1>
-            <p class="text-muted mb-0">ابحث بالاسم أو رقم القطعة أو الباركود ثم أضف مباشرة إلى السلة.</p>
+<div class="container-fluid px-3 px-lg-4 search-shell">
+    <section class="search-hero">
+        <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center">
+            <div>
+                <h1 class="h3">البحث عن قطع الغيار</h1>
+                <p>ابحث بالاسم أو رقم القطعة أو الباركود ثم أضف مباشرة إلى السلة.</p>
+            </div>
+            <div class="search-actions">
+                <a href="{% url 'pos_console' %}" class="btn btn-light search-action-btn"><i class="fa-solid fa-cash-register"></i> POS</a>
+                <a href="{% url 'cart_view' %}" class="btn btn-primary search-cart-btn">
+                    <i class="fa-solid fa-cart-shopping"></i> السلة
+                    <span id="cart-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">{{ cart_total_count }}</span>
+                </a>
+            </div>
         </div>
-        <div class="d-flex gap-2">
-            <a href="{% url 'pos_console' %}" class="btn btn-outline-dark"><i class="fa-solid fa-cash-register"></i> POS</a>
-            <a href="{% url 'cart_view' %}" class="btn btn-primary position-relative">
-                <i class="fa-solid fa-cart-shopping"></i> السلة
-                <span id="cart-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">{{ cart_total_count }}</span>
-            </a>
-        </div>
-    </div>
+    </section>
 
     <div class="row g-3 mb-3">
         <div class="col-lg-4">
-            <div class="card delta-card h-100">
+            <div class="card search-panel">
                 <div class="card-body">
-                    <h2 class="h6">فلترة حسب السيارة</h2>
-                    <p class="text-muted small">اختر موديل السيارة لعرض القطع المتوافقة.</p>
-                    <a href="{% url 'vehicle_catalog' %}" class="btn btn-outline-secondary btn-sm">فتح كتالوج السيارات</a>
+                    <h2 class="search-panel-title">فلترة حسب السيارة</h2>
+                    <p class="search-muted">اختر الماركة والموديل والسنة لعرض القطع المتوافقة بسرعة.</p>
+                    <a href="{% url 'vehicle_catalog' %}" class="btn btn-outline-secondary search-catalog-btn">فتح كتالوج السيارات</a>
                 </div>
             </div>
         </div>
         <div class="col-lg-8">
-            <div class="card delta-card h-100">
+            <div class="card search-panel">
                 <div class="card-body">
-                    <form id="part-search-form" method="get" class="row g-2 align-items-end">
-                        <div class="col-md-6">
-                            <label class="form-label">بحث سريع</label>
+                    <form id="part-search-form" method="get" class="row g-2 align-items-end search-form">
+                        <div class="col-md-5">
+                            <label class="form-label">بحث داخل الفرع النشط</label>
                             <div class="input-group">
-                                <input id="part-search-input" type="text" name="q" value="{{ query }}" class="form-control" placeholder="Part name / رقم القطعة / Barcode" autocomplete="off">
+                                <input id="part-search-input" type="text" name="q" value="{{ query }}" class="form-control search-input" placeholder="اسم الصنف / رقم القطعة / باركود" autocomplete="off">
                                 <button
                                     type="button"
-                                    class="btn btn-outline-secondary"
+                                    class="btn search-camera-btn"
                                     data-barcode-scan-target="#part-search-input"
                                     data-barcode-form="#part-search-form"
                                     data-barcode-auto-submit="true"
@@ -46,13 +500,28 @@
                                     <i class="fa-solid fa-camera"></i>
                                 </button>
                             </div>
+                            <div id="part-search-suggest" class="list-group mt-1 d-none"></div>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label">Vehicle ID</label>
-                            <input type="text" name="vehicle" value="{{ query_vehicle_id|default:'' }}" class="form-control" placeholder="Optional">
+                            <label class="form-label">السيارة (ID أو موديل)</label>
+                            <input type="text" name="vehicle" value="{{ query_vehicle_id|default:'' }}" class="form-control" placeholder="مثال: 100 أو Patrol">
                         </div>
-                        <div class="col-md-3 d-grid">
-                            <button class="btn btn-primary" type="submit"><i class="fa-solid fa-magnifying-glass"></i> بحث</button>
+                        <div class="col-md-2 d-grid">
+                            <button class="btn btn-primary search-submit-btn" type="submit"><i class="fa-solid fa-magnifying-glass"></i> بحث</button>
+                        </div>
+                        <div class="col-md-2 d-grid">
+                            <a href="{% url 'part_search' %}" class="btn btn-outline-secondary">مسح</a>
+                        </div>
+                    </form>
+                    <hr class="my-3">
+                    <form method="get" class="row g-2 align-items-end search-form">
+                        <div class="col-md-10">
+                            <label class="form-label">بحث شامل كل الفروع</label>
+                            <input type="text" name="global_q" value="{{ global_query|default:'' }}" class="form-control search-input" placeholder="ابحث في كل الفروع: اسم الصنف / رقم القطعة / باركود">
+                            <div class="form-text">يعرض النتائج من جميع الفروع المصرح لك بها.</div>
+                        </div>
+                        <div class="col-md-2 d-grid">
+                            <button class="btn btn-outline-primary" type="submit"><i class="fa-solid fa-earth-americas"></i> بحث شامل</button>
                         </div>
                     </form>
                 </div>
@@ -61,56 +530,67 @@
     </div>
 
     {% if results %}
+        <div class="results-meta">
+            {% if search_mode == 'global' %}
+                عرض {{ results|length }} نتيجة في <strong>كل الفروع</strong>{% if global_query %} لعبارة: <strong>{{ global_query }}</strong>{% endif %}
+            {% else %}
+                عرض {{ results|length }} نتيجة في <strong>الفرع النشط</strong>{% if query %} لعبارة: <strong>{{ query }}</strong>{% endif %}
+            {% endif %}
+        </div>
         <div class="vstack gap-3">
             {% for part in results %}
-                <div class="card delta-card">
+                <div class="card part-result-card">
                     <div class="card-body">
-                        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+                        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
                             <div>
-                                <h3 class="h5 mb-1">{{ part.name }}</h3>
-                                <div class="text-muted small">{{ part.part_number }}</div>
+                                <h3 class="part-title">{{ part.name }}</h3>
+                                <span class="part-number-pill">{{ part.part_number }}</span>
                             </div>
-                            <div class="text-end">
-                                <div class="fw-bold fs-5 text-primary">{{ part.selling_price }} SAR</div>
-                                <div class="small text-muted">Cost: {{ part.cost_price }} SAR</div>
+                            <div class="part-price">
+                                <div class="main">{{ part.selling_price }} SAR</div>
+                                <div class="sub">التكلفة: {{ part.cost_price }} SAR</div>
                             </div>
                         </div>
 
                         {% if part.available_stock %}
-                            <div class="table-responsive">
+                            <div class="table-responsive result-table">
                                 <table class="table table-sm align-middle mb-0">
-                                    <thead>
-                                        <tr>
-                                            <th>الفرع</th>
-                                            <th>الكمية</th>
-                                            <th style="width: 280px;">إضافة للسلة</th>
-                                            <th style="width: 140px;">تحويل</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {% for stock in part.available_stock %}
-                                            <tr>
-                                                <td>{{ stock.branch.name }}</td>
-                                                <td>
-                                                    <span class="badge {% if stock.quantity <= 3 %}text-bg-danger{% else %}text-bg-success{% endif %}">{{ stock.quantity }}</span>
-                                                </td>
-                                                <td>
-                                                    {% if stock.quantity > 0 %}
-                                                        <form method="post" action="{% url 'add_to_cart' stock.id %}" class="add-cart-form d-flex gap-2" data-stock-id="{{ stock.id }}">
-                                                            {% csrf_token %}
-                                                            <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                                                            <input type="number" min="1" max="{{ stock.quantity }}" name="quantity" value="1" class="form-control form-control-sm text-center" style="max-width: 90px;">
-                                                            <button class="btn btn-sm btn-outline-primary" type="submit">إضافة</button>
-                                                        </form>
-                                                    {% else %}
-                                                        <span class="text-muted small">غير متوفر</span>
-                                                    {% endif %}
-                                                </td>
-                                                <td>
-                                                    {% if stock.quantity > 0 and active_branch and stock.branch.id != active_branch.id %}
-                                                        <a href="{% url 'transfer_create_from_stock' stock.id %}" class="btn btn-sm btn-outline-warning">طلب تحويل</a>
-                                                    {% else %}
-                                                        <span class="text-muted small">-</span>
+	                                    <thead>
+	                                        <tr>
+	                                            <th>الفرع</th>
+	                                            <th>الموقع / الرف</th>
+	                                            <th>الكمية</th>
+	                                            <th>إضافة للسلة</th>
+	                                            <th>تحويل</th>
+	                                        </tr>
+	                                    </thead>
+	                                    <tbody>
+	                                        {% for stock in part.available_stock %}
+	                                            <tr>
+	                                                <td>{{ stock.branch.name }}</td>
+	                                                <td>
+	                                                    <span class="text-muted small">{{ stock.location_summary|default:"-" }}</span>
+	                                                </td>
+	                                                <td>
+	                                                    <span class="qty-badge {% if stock.display_quantity|default:stock.quantity <= 3 %}low{% else %}good{% endif %}">{{ stock.display_quantity|default:stock.quantity }}</span>
+	                                                </td>
+	                                                <td>
+	                                                    {% if stock.display_quantity|default:stock.quantity > 0 %}
+	                                                        <form method="post" action="{% url 'add_to_cart' stock.id %}" class="add-cart-form d-flex gap-2" data-stock-id="{{ stock.id }}">
+	                                                            {% csrf_token %}
+	                                                            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+	                                                            <input type="number" min="1" max="{{ stock.display_quantity|default:stock.quantity }}" name="quantity" value="1" class="form-control form-control-sm text-center" style="max-width: 90px;">
+	                                                            <button class="btn btn-sm btn-outline-primary" type="submit">إضافة</button>
+	                                                        </form>
+	                                                    {% else %}
+	                                                        <span class="text-muted small">غير متوفر</span>
+	                                                    {% endif %}
+	                                                </td>
+	                                                <td>
+	                                                    {% if stock.display_quantity|default:stock.quantity > 0 and active_branch and stock.branch.id != active_branch.id %}
+	                                                        <a href="{% url 'transfer_create_from_stock' stock.id %}" class="btn btn-sm btn-outline-warning">طلب تحويل</a>
+	                                                    {% else %}
+	                                                        <span class="text-muted small">-</span>
                                                     {% endif %}
                                                 </td>
                                             </tr>
@@ -130,19 +610,41 @@
             <nav class="mt-4">
                 <ul class="pagination justify-content-center">
                     {% if part_page.has_previous %}
-                        <li class="page-item"><a class="page-link" href="?q={{ query|urlencode }}&vehicle={{ query_vehicle_id|default:''|urlencode }}&page={{ part_page.previous_page_number }}">Previous</a></li>
+                        <li class="page-item"><a class="page-link" href="?q={{ query|urlencode }}&global_q={{ global_query|default:''|urlencode }}&vehicle={{ query_vehicle_id|default:''|urlencode }}&page={{ part_page.previous_page_number }}">السابق</a></li>
                     {% endif %}
                     <li class="page-item disabled"><span class="page-link">{{ part_page.number }} / {{ part_page.paginator.num_pages }}</span></li>
                     {% if part_page.has_next %}
-                        <li class="page-item"><a class="page-link" href="?q={{ query|urlencode }}&vehicle={{ query_vehicle_id|default:''|urlencode }}&page={{ part_page.next_page_number }}">Next</a></li>
+                        <li class="page-item"><a class="page-link" href="?q={{ query|urlencode }}&global_q={{ global_query|default:''|urlencode }}&vehicle={{ query_vehicle_id|default:''|urlencode }}&page={{ part_page.next_page_number }}">التالي</a></li>
                     {% endif %}
                 </ul>
             </nav>
         {% endif %}
-    {% elif query or query_vehicle_id %}
-        <div class="card delta-card">
-            <div class="card-body text-center py-5 text-muted">
-                لا توجد نتائج مطابقة.
+    {% elif query or global_query or query_vehicle_id %}
+        <div class="card search-empty">
+            <div class="card-body text-center py-5">
+                <div class="fs-5 fw-semibold mb-2">لا توجد نتائج مطابقة</div>
+                <div class="small text-muted">جرّب رقم قطعة مختلف، أو افتح كتالوج السيارات لاختيار موديل وسنة بشكل أدق.</div>
+            </div>
+        </div>
+    {% else %}
+        <div class="card search-empty">
+            <div class="card-body text-center">
+                <div class="fs-5 fw-semibold mb-1">جاهز للبحث</div>
+                <div class="small mb-2">اكتب اسم الصنف أو رقم القطعة أو استخدم زر الكاميرا لمسح الباركود.</div>
+                <div class="starter-grid text-start">
+                    <div class="starter-item">
+                        <div class="title">1) بحث سريع</div>
+                        <div class="text">ابدأ بكتابة `OF-1234` أو `Oil Filter` لعرض نتائج فورية.</div>
+                    </div>
+                    <div class="starter-item">
+                        <div class="title">2) مسح باركود</div>
+                        <div class="text">اضغط أيقونة الكاميرا ثم وجّهها للباركود لإدخال الكود تلقائيًا.</div>
+                    </div>
+                    <div class="starter-item">
+                        <div class="title">3) اختيار سيارة</div>
+                        <div class="text">افتح كتالوج السيارات وحدد الموديل والسنة لفلترة القطع المتوافقة.</div>
+                    </div>
+                </div>
             </div>
         </div>
     {% endif %}
@@ -154,6 +656,91 @@
 (function () {
     const forms = document.querySelectorAll('.add-cart-form');
     const badge = document.getElementById('cart-badge');
+    const searchForm = document.getElementById('part-search-form');
+    const searchInput = document.getElementById('part-search-input');
+    const suggestions = document.getElementById('part-search-suggest');
+    let timer = null;
+    let controller = null;
+    let requestSeq = 0;
+
+    function clearSuggestions() {
+        if (!suggestions) return;
+        suggestions.classList.add('d-none');
+        suggestions.innerHTML = '';
+    }
+
+    function renderSuggestions(rows) {
+        if (!suggestions) return;
+        suggestions.innerHTML = '';
+        if (!rows || rows.length === 0) {
+            clearSuggestions();
+            return;
+        }
+        rows.forEach((row) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'list-group-item list-group-item-action';
+            const title = document.createElement('div');
+            title.className = 'fw-semibold';
+            title.textContent = `${row.part_number} - ${row.name}`;
+            const sub = document.createElement('small');
+            sub.className = 'text-muted';
+            sub.textContent = `${row.branch} | الكمية ${row.stock_qty}`;
+            button.appendChild(title);
+            button.appendChild(sub);
+            button.addEventListener('click', () => {
+                if (searchInput) searchInput.value = row.part_number;
+                clearSuggestions();
+                if (searchForm) searchForm.submit();
+            });
+            suggestions.appendChild(button);
+        });
+        suggestions.classList.remove('d-none');
+    }
+
+    async function fetchSuggestions(term) {
+        if (!term || term.length < 3 || !searchForm) {
+            clearSuggestions();
+            return;
+        }
+        const currentSeq = ++requestSeq;
+        if (controller) controller.abort();
+        controller = new AbortController();
+        const params = new URLSearchParams(new FormData(searchForm));
+        params.set('q', term);
+        try {
+            const response = await fetch(`${searchForm.action || window.location.pathname}?${params.toString()}`, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                cache: 'no-store',
+                signal: controller.signal
+            });
+            if (!response.ok) throw new Error('search request failed');
+            const data = await response.json();
+            if (currentSeq !== requestSeq) return;
+            const liveTerm = (searchInput && searchInput.value ? searchInput.value.trim() : '');
+            if ((data.query || '').trim().toLowerCase() !== liveTerm.toLowerCase()) return;
+            renderSuggestions(data.results || []);
+        } catch (error) {
+            if (error && error.name === 'AbortError') return;
+            clearSuggestions();
+        }
+    }
+
+    if (searchInput) {
+        searchInput.addEventListener('input', () => {
+            const term = searchInput.value.trim();
+            if (timer) window.clearTimeout(timer);
+            timer = window.setTimeout(() => fetchSuggestions(term), 300);
+        });
+        searchInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') clearSuggestions();
+        });
+        document.addEventListener('click', (event) => {
+            if (!suggestions || suggestions.classList.contains('d-none')) return;
+            if (event.target.closest('#part-search-suggest') || event.target === searchInput) return;
+            clearSuggestions();
+        });
+    }
 
     forms.forEach((form) => {
         form.addEventListener('submit', async (event) => {
@@ -181,11 +768,11 @@
                     button.classList.add('btn-success');
                     button.innerText = 'تم';
                 } else {
-                    alert(data.message || 'Unable to add item.');
+                    alert(data.message || 'تعذر إضافة الصنف.');
                     button.innerText = originalLabel;
                 }
             } catch (error) {
-                alert('Network error while adding to cart.');
+                alert('حدث خطأ في الاتصال أثناء إضافة الصنف.');
                 button.innerText = originalLabel;
             } finally {
                 setTimeout(() => {

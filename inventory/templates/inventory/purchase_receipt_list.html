@@ -1,0 +1,71 @@
+﻿{% extends "inventory/base.html" %}
+
+{% block title %}الاستلام{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 px-lg-4">
+    <div class="delta-page-shell">
+        <section class="delta-hero d-flex flex-wrap align-items-start justify-content-between gap-2">
+            <div>
+                <h1 class="h4 mb-1">الاستلام</h1>
+                <p class="text-muted">إنشاء سندات الاستلام وتحديث مخزون الفرع وتتبع تكلفة الشراء.</p>
+            </div>
+            <div class="page-actions">
+                <a href="{% url 'purchase_order_list' %}" class="btn btn-outline-secondary">أوامر الشراء</a>
+            </div>
+        </section>
+
+        <div class="card delta-accent-card mb-3">
+            <div class="card-header">تصفية</div>
+            <div class="card-body">
+                <form method="get" class="delta-inline-form">
+                    <div>
+                        <label class="form-label">الحالة</label>
+                        <select name="status" class="form-select">
+                            <option value="">جميع الحالات</option>
+                            {% for value, label in status_choices %}
+                                <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="d-grid">
+                        <button class="btn btn-outline-secondary" type="submit"><i class="fa-solid fa-filter me-1"></i> تصفية</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card delta-accent-card delta-table-panel">
+            <div class="card-header">سجل الاستلام</div>
+            <div class="card-body table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>رقم السند</th>
+                            <th>رقم أمر الشراء</th>
+                            <th>الفرع</th>
+                            <th>الحالة</th>
+                            <th>تم الاستلام بواسطة</th>
+                            <th>تاريخ الاستلام</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for receipt in receipts %}
+                        <tr>
+                            <td><a href="{% url 'purchase_receipt_detail' receipt.id %}"><strong>GRN-{{ receipt.id }}</strong></a></td>
+                            <td>{{ receipt.po.po_number }}</td>
+                            <td>{{ receipt.branch.name }}</td>
+                            <td><span class="delta-chip">{{ receipt.get_status_display }}</span></td>
+                            <td>{{ receipt.received_by.username }}</td>
+                            <td>{{ receipt.received_at|date:"Y-m-d H:i" }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="6" class="py-4"><div class="delta-empty">لا توجد سجلات استلام.</div></td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

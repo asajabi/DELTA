@@ -1,0 +1,81 @@
+﻿{% extends "inventory/base.html" %}
+
+{% block title %}أوامر الشراء{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 px-lg-4">
+    <div class="delta-page-shell">
+        <section class="delta-hero d-flex flex-wrap align-items-start justify-content-between gap-2">
+            <div>
+                <h1 class="h4 mb-1">أوامر الشراء</h1>
+                <p class="text-muted">متابعة أوامر الموردين وتقدم الاستلام وحركة الشراء لكل فرع.</p>
+            </div>
+            <div class="page-actions">
+                <a href="{% url 'purchase_order_create' %}" class="btn btn-primary"><i class="fa-solid fa-file-circle-plus me-1"></i> أمر شراء جديد</a>
+                <a href="{% url 'purchase_receipt_list' %}" class="btn btn-outline-secondary">الاستلام</a>
+            </div>
+        </section>
+
+        <div class="card delta-accent-card mb-3">
+            <div class="card-header">عوامل التصفية</div>
+            <div class="card-body">
+                <form method="get" class="delta-inline-form">
+                    <div>
+                        <label class="form-label">الحالة</label>
+                        <select name="status" class="form-select">
+                            <option value="">الكل</option>
+                            {% for value, label in status_choices %}
+                                <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label">الفرع</label>
+                        <select name="branch" class="form-select">
+                            <option value="">الكل</option>
+                            {% for b in branches %}
+                                <option value="{{ b.id }}" {% if selected_branch == b.id %}selected{% endif %}>{{ b.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="d-grid">
+                        <button class="btn btn-outline-secondary" type="submit"><i class="fa-solid fa-filter me-1"></i> تصفية</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card delta-accent-card delta-table-panel">
+            <div class="card-header">سجل أوامر الشراء</div>
+            <div class="card-body table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>رقم أمر الشراء</th>
+                            <th>المورد</th>
+                            <th>الفرع</th>
+                            <th>الحالة</th>
+                            <th>التاريخ المتوقع</th>
+                            <th>تاريخ الإنشاء</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for po in orders %}
+                        <tr>
+                            <td><a href="{% url 'purchase_order_detail' po.id %}"><strong>{{ po.po_number }}</strong></a></td>
+                            <td>{{ po.vendor }}</td>
+                            <td>{{ po.branch.name }}</td>
+                            <td><span class="delta-chip">{{ po.get_status_display }}</span></td>
+                            <td>{{ po.expected_date|default:"-" }}</td>
+                            <td>{{ po.created_at|date:"Y-m-d H:i" }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="6" class="py-4"><div class="delta-empty">لا توجد أوامر شراء.</div></td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

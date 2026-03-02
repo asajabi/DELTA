@@ -1,0 +1,87 @@
+﻿{% extends "inventory/base.html" %}
+
+{% block title %}الموردون{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 px-lg-4">
+    <div class="delta-page-shell">
+        <section class="delta-hero d-flex flex-wrap align-items-start justify-content-between gap-2">
+            <div>
+                <h1 class="h4 mb-1">الموردون</h1>
+                <p class="text-muted">إدارة بيانات الموردين لعمليات الشراء والاستلام.</p>
+            </div>
+            <div class="page-actions">
+                <a class="btn btn-primary" href="{% url 'vendor_create' %}"><i class="fa-solid fa-plus me-1"></i> مورد جديد</a>
+            </div>
+        </section>
+
+        <div class="delta-kpi-grid">
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">النتائج</span>
+                <span class="delta-kpi-value">{{ page_obj.paginator.count|default:0 }}</span>
+            </article>
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">الصفحة الحالية</span>
+                <span class="delta-kpi-value">{{ page_obj.number|default:1 }}</span>
+            </article>
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">البحث</span>
+                <span class="delta-kpi-value">{{ query|default:"الكل" }}</span>
+            </article>
+        </div>
+
+        <div class="card delta-accent-card mt-3">
+            <div class="card-header">بحث</div>
+            <div class="card-body">
+                <form method="get" class="delta-inline-form">
+                    <div>
+                        <label class="form-label">كلمة البحث</label>
+                        <input type="text" class="form-control" name="q" value="{{ query }}" placeholder="ابحث باسم المورد أو الكود أو الهاتف">
+                    </div>
+                    <div class="d-grid">
+                        <button class="btn btn-outline-secondary" type="submit"><i class="fa-solid fa-magnifying-glass me-1"></i> بحث</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card delta-accent-card delta-table-panel mt-3">
+            <div class="card-header">دليل الموردين</div>
+            <div class="card-body table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>الكود</th>
+                            <th>الاسم العربي</th>
+                            <th>الاسم الإنجليزي</th>
+                            <th>الهاتف</th>
+                            <th>الرقم الضريبي</th>
+                            <th>الحالة</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for vendor in vendors %}
+                        <tr>
+                            <td><a href="{% url 'vendor_detail' vendor.id %}"><strong>{{ vendor.vendor_code }}</strong></a></td>
+                            <td>{{ vendor.name_ar|default:"-" }}</td>
+                            <td>{{ vendor.name_en|default:"-" }}</td>
+                            <td>{{ vendor.phone|default:"-" }}</td>
+                            <td>{{ vendor.vat_number|default:"-" }}</td>
+                            <td>
+                                {% if vendor.is_active %}
+                                    <span class="delta-chip">نشط</span>
+                                {% else %}
+                                    <span class="badge text-bg-secondary">غير نشط</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="6" class="py-4"><div class="delta-empty">لا يوجد موردون.</div></td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,154 @@
+﻿{% extends "inventory/base.html" %}
+
+{% block title %}أمر شراء جديد{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    const addBtn = document.getElementById("add-po-line");
+    const rowsWrap = document.getElementById("po-lines-wrap");
+    if (!addBtn || !rowsWrap) return;
+
+        const createLine = () => {
+            const first = rowsWrap.querySelector(".po-line-row");
+            if (!first) return null;
+            const clone = first.cloneNode(true);
+            clone.querySelectorAll(".delta-part-picker, .part-picker-input, .part-picker-id, datalist, .form-text").forEach((el) => el.remove());
+            clone.querySelectorAll("select.js-part-select").forEach((el) => {
+                el.removeAttribute("data-part-picker-ready");
+                el.disabled = false;
+                el.classList.remove("d-none");
+                if (!el.getAttribute("name")) {
+                    el.setAttribute("name", "part_id");
+                }
+            });
+            clone.querySelectorAll("input").forEach((el) => {
+                if (el.name === "tax_rate") el.value = "15.00";
+                else if (el.name === "discount") el.value = "0.00";
+                else el.value = "";
+            });
+            clone.querySelectorAll("select").forEach((el) => { el.selectedIndex = 0; });
+            return clone;
+        };
+
+        addBtn.addEventListener("click", function () {
+            const line = createLine();
+            if (!line) return;
+            rowsWrap.appendChild(line);
+            if (window.deltaInitPartPickers) {
+                window.deltaInitPartPickers(line);
+            }
+        });
+
+    rowsWrap.addEventListener("click", function (event) {
+        const btn = event.target.closest("[data-remove-line]");
+        if (!btn) return;
+        const lines = rowsWrap.querySelectorAll(".po-line-row");
+        if (lines.length <= 1) return;
+        btn.closest(".po-line-row").remove();
+    });
+})();
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 px-lg-4">
+    <div class="delta-page-shell">
+        <section class="delta-hero d-flex flex-wrap align-items-start justify-content-between gap-2">
+            <div>
+                <h1 class="h4 mb-1">إنشاء أمر شراء</h1>
+                <p class="text-muted">أدخل الأصناف والكميات المتوقعة وتكلفة الشراء من المورد.</p>
+            </div>
+            <div class="page-actions">
+                <a href="{% url 'purchase_order_list' %}" class="btn btn-outline-secondary"><i class="fa-solid fa-arrow-left me-1"></i> رجوع</a>
+            </div>
+        </section>
+
+        <form method="post" class="d-flex flex-column gap-3">
+            {% csrf_token %}
+
+            <div class="card delta-accent-card">
+                <div class="card-header">بيانات أمر الشراء</div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">المورد</label>
+                            <select name="vendor_id" class="form-select" required>
+                                <option value="">اختر المورد</option>
+                                {% for v in vendors %}
+                                    <option value="{{ v.id }}">{{ v.vendor_code }} - {{ v.name_ar|default:v.name_en }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">الفرع</label>
+                            <select name="branch_id" class="form-select">
+                                {% for b in branches %}
+                                    <option value="{{ b.id }}" {% if active_branch and active_branch.id == b.id %}selected{% endif %}>{{ b.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">تاريخ التوريد المتوقع</label>
+                            <input type="date" name="expected_date" class="form-control">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">ملاحظات</label>
+                            <input type="text" name="notes" class="form-control" placeholder="مرجع المورد أو أي ملاحظة">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card delta-accent-card">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <span>بنود أمر الشراء</span>
+                    <button id="add-po-line" type="button" class="btn btn-sm btn-outline-light"><i class="fa-solid fa-plus me-1"></i> إضافة بند</button>
+                </div>
+                <div class="card-body d-flex flex-column gap-2" id="po-lines-wrap">
+                    <div class="row g-2 po-line-row delta-soft-panel">
+                        <div class="col-md-4">
+                            <label class="form-label">الصنف</label>
+                            <select name="part_id" class="form-select js-part-select" data-part-placeholder="ابحث عن الصنف برقم القطعة أو الاسم">
+                                <option value="">اختر الصنف</option>
+                                {% for p in parts %}
+                                    <option value="{{ p.id }}">{{ p.part_number }} - {{ p.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">الكمية</label>
+                            <input type="number" min="1" name="qty_ordered" class="form-control" placeholder="الكمية">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">تكلفة الوحدة</label>
+                            <input type="number" min="0" step="0.0001" name="unit_cost" class="form-control" placeholder="0.0000">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">الضريبة %</label>
+                            <input type="number" min="0" step="0.01" name="tax_rate" class="form-control" value="15.00">
+                        </div>
+                        <div class="col-md-1">
+                            <label class="form-label">الخصم</label>
+                            <input type="number" min="0" step="0.01" name="discount" class="form-control" value="0.00">
+                        </div>
+                        <div class="col-md-1 d-grid align-self-end">
+                            <button type="button" class="btn btn-outline-secondary" data-remove-line><i class="fa-solid fa-minus"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card delta-accent-card">
+                <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" value="1" id="mark_sent" name="mark_sent">
+                        <label class="form-check-label" for="mark_sent">تعيين الحالة: مرسل مباشرة</label>
+                    </div>
+                    <button class="btn btn-primary" type="submit"><i class="fa-solid fa-check me-1"></i> إنشاء أمر الشراء</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

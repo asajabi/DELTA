@@ -1,16 +1,18 @@
-﻿from datetime import timedelta
+from datetime import timedelta
 from decimal import Decimal
 from io import StringIO
+import re
 from unittest.mock import patch
 
 from django.contrib import admin
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Permission, User
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django.core import mail
 from django.db import IntegrityError
 from django.db.models import Sum
 from django.test import RequestFactory
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -20,9 +22,22 @@ from .models import (
     AuditLog,
     Branch,
     Category,
+    CreditNote,
+    CreditNoteLine,
+    CustomerLedgerEntry,
+    CycleCountLine,
+    CycleCountSession,
     Location,
     Order,
+    PartBarcode,
+    PartBranchCost,
     Part,
+    Payment,
+    PasswordResetOtp,
+    PurchaseOrder,
+    PurchaseOrderLine,
+    PurchaseReceipt,
+    PurchaseReceiptLine,
     Sale,
     Stock,
     StockLocation,
@@ -30,6 +45,8 @@ from .models import (
     Ticket,
     TransferRequest,
     UserProfile,
+    Vehicle,
+    Vendor,
     add_stock_to_location,
     move_stock_between_locations,
     remove_stock_from_locations,
@@ -74,6 +91,23 @@ class AuthPermissionTests(TestCase):
     def test_manager_can_access_sales_history(self):
         self.client.login(username="manager", password="pass12345")
         response = self.client.get(reverse("sales_history"))
+        self.assertEqual(response.status_code, 200)
+
+    def test_search_vehicle_text_does_not_raise_value_error(self):
+        category = Category.objects.create(name="Engine")
+        vehicle = Vehicle.objects.create(make="Nissan", model="Patrol", year=2020)
+        part = Part.objects.create(
+            name="Oil Filter",
+            part_number="OF-100",
+            category=category,
+            cost_price=Decimal("10.00"),
+            selling_price=Decimal("20.00"),
+        )
+        part.compatible_vehicles.add(vehicle)
+        Stock.objects.create(part=part, branch=self.branch, quantity=5)
+
+        self.client.login(username="cashier", password="pass12345")
+        response = self.client.get(reverse("part_search"), {"vehicle": "patrol"})
         self.assertEqual(response.status_code, 200)
 
 
@@ -138,12 +172,12 @@ class RuntimeRegressionTests(TestCase):
         self.assertContains(response, "الطلبات")
         self.assertContains(response, "التحويلات")
         self.assertContains(response, "الدعم الفني")
-        self.assertContains(response, "Chat Assistant")
+        self.assertContains(response, "المساعد الذكي")
         self.assertContains(response, "التقارير")
         self.assertContains(response, "تنبيه المخزون")
         self.assertContains(response, "المواقع")
-        self.assertContains(response, "Stock by Location")
-        self.assertContains(response, "Audit")
+        self.assertContains(response, "المخزون حسب الموقع")
+        self.assertContains(response, "سجل التدقيق")
         self.assertContains(response, "تغيير")
         self.assertContains(response, "تسجيل الخروج")
 
@@ -242,9 +276,17 @@ class BranchIsolationTests(TestCase):
             cost_price=Decimal("8.00"),
             selling_price=Decimal("15.00"),
         )
+        self.part_c = Part.objects.create(
+            name="Crossword Book",
+            part_number="CB-1500",
+            category=category,
+            cost_price=Decimal("50.00"),
+            selling_price=Decimal("120.00"),
+        )
 
         self.stock_a = Stock.objects.create(part=self.part_a, branch=self.branch_a, quantity=5)
         self.stock_b = Stock.objects.create(part=self.part_b, branch=self.branch_b, quantity=5)
+        self.stock_c = Stock.objects.create(part=self.part_c, branch=self.branch_a, quantity=11)
 
         self.cashier = User.objects.create_user(username="cashier", password="pass12345")
         UserProfile.objects.update_or_create(
@@ -280,6 +322,49 @@ class BranchIsolationTests(TestCase):
         results = list(response.context["results"])
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].part_number, "OF-001")
+
+    def test_short_random_query_does_not_return_unrelated_parts(self):
+        self.client.login(username="cashier", password="pass12345")
+        response = self.client.get(reverse("part_search"), {"q": "xd"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.context["results"])
+
+    def test_manager_global_search_can_lookup_other_branch_part(self):
+        self.client.login(username="manager", password="pass12345")
+
+        local_response = self.client.get(reverse("part_search"), {"q": "BF-001"})
+        self.assertEqual(local_response.status_code, 200)
+        self.assertIsNone(local_response.context["results"])
+
+        global_response = self.client.get(reverse("part_search"), {"global_q": "BF-001"})
+        self.assertEqual(global_response.status_code, 200)
+        global_results = list(global_response.context["results"])
+        self.assertEqual(len(global_results), 1)
+        self.assertEqual(global_results[0].part_number, "BF-001")
+
+    def test_ajax_suggestions_do_not_return_unrelated_result_for_random_text(self):
+        self.client.login(username="cashier", password="pass12345")
+        response = self.client.get(
+            reverse("part_search"),
+            {"q": "dssdfsghj"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload.get("results"), [])
+
+    def test_ajax_suggestions_support_contains_for_three_or_more_chars(self):
+        self.client.login(username="cashier", password="pass12345")
+        response = self.client.get(
+            reverse("part_search"),
+            {"q": "ross"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        returned_parts = [row.get("part_number") for row in payload.get("results", [])]
+        self.assertIn("CB-1500", returned_parts)
 
 
 class CheckoutFlowTests(TestCase):
@@ -751,8 +836,7 @@ class ScanWorkflowTests(TestCase):
             {"mode": "info", "scan_code": "1234567890"},
         )
         self.assertEqual(response.status_code, 302)
-        self.assertIn(reverse("stock_locations_view"), response.url)
-        self.assertIn("scan_mode=info", response.url)
+        self.assertEqual(response.url, reverse("part_insight", args=[self.part.id]))
 
     def test_scan_resolve_returns_single_part_match(self):
         self.client.login(username="scan_manager", password="pass12345")
@@ -1627,6 +1711,10 @@ class ChatAssistantTests(TestCase):
         self.assertIn("A3", parsed_move["location_hints"])
         self.assertIn("B1", parsed_move["location_hints"])
 
+        parsed_lookup = parse_chat_message("where is OIL-1")
+        self.assertEqual(parsed_lookup["action"], "lookup_stock")
+        self.assertEqual(parsed_lookup["part_query"], "oil-1")
+
     def test_detect_branch_synonyms_in_arabic(self):
         branches = detect_branches_in_text("transfer from مخرج 18 to الجمعية", Branch.objects.all())
         self.assertGreaterEqual(len(branches), 2)
@@ -1641,6 +1729,14 @@ class ChatAssistantTests(TestCase):
         self.assertIn("multiple parts", last_message)
         self.assertIn("oil-1", last_message)
         self.assertIn("oil-2", last_message)
+
+    def test_lookup_where_is_part_number_finds_stock(self):
+        self.client.login(username="chat_manager", password="pass12345")
+        response = self.client.post(reverse("analytics_assistant"), {"message": "where is OIL-1"})
+        self.assertEqual(response.status_code, 200)
+        last_message = response.context["chat_history"][-1]["content"].lower()
+        self.assertNotIn("no stock matched", last_message)
+        self.assertIn("oil-1", last_message)
 
     def test_cashier_cannot_adjust_stock_by_chat(self):
         self.client.login(username="chat_cashier", password="pass12345")
@@ -1771,6 +1867,46 @@ class ChatAssistantTests(TestCase):
                 action="transfer.request",
                 object_id=str(transfer.id),
             ).exists()
+        )
+
+    @patch("inventory.views.assistant_llm_enabled", return_value=True)
+    @patch("inventory.views.generate_assistant_plan")
+    def test_live_ai_chat_mode_uses_model_reply(self, mock_generate_plan, _mock_enabled):
+        self.client.login(username="chat_manager", password="pass12345")
+        mock_generate_plan.return_value = {
+            "mode": "chat",
+            "assistant_reply": "I can help with stock checks and transfer workflows.",
+            "command_text": "",
+        }
+
+        response = self.client.post(reverse("analytics_assistant"), {"message": "hello there"})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("help with stock checks", response.context["chat_history"][-1]["content"])
+        self.assertIsNone(self.client.session.get("assistant_chat_pending_action"))
+        mock_generate_plan.assert_called_once()
+
+    @patch("inventory.views.assistant_llm_enabled", return_value=True)
+    @patch("inventory.views.generate_assistant_plan")
+    def test_live_ai_command_mode_still_requires_confirm_for_write(self, mock_generate_plan, _mock_enabled):
+        self.client.login(username="chat_manager", password="pass12345")
+        stock_before = Stock.objects.get(part=self.part_oil_1, branch=self.branch_old).quantity
+        mock_generate_plan.return_value = {
+            "mode": "command",
+            "assistant_reply": "I prepared a stock receipt action for approval.",
+            "command_text": "add 2 OIL-1 in OLD A3 reason receive shipment",
+        }
+
+        response = self.client.post(reverse("analytics_assistant"), {"message": "please receive two units"})
+        self.assertEqual(response.status_code, 200)
+        pending = self.client.session.get("assistant_chat_pending_action")
+        self.assertIsNotNone(pending)
+        self.assertEqual(pending["action"], "add_stock")
+        self.assertEqual(Stock.objects.get(part=self.part_oil_1, branch=self.branch_old).quantity, stock_before)
+
+        self.client.post(reverse("analytics_assistant"), {"message": "confirm"})
+        self.assertEqual(
+            Stock.objects.get(part=self.part_oil_1, branch=self.branch_old).quantity,
+            stock_before + 2,
         )
 
 
@@ -2031,4 +2167,493 @@ class SeedRealisticInventoryCommandTests(TestCase):
         self.assertTrue(Branch.objects.filter(name="شارع الجمعية").exists())
 
 
+
+class PurchasingWorkflowTests(TestCase):
+    def setUp(self):
+        self.branch = Branch.objects.create(name="Main", code="MAIN")
+        self.manager = User.objects.create_user(username="po_manager", password="pass12345")
+        UserProfile.objects.update_or_create(
+            user=self.manager,
+            defaults={"role": UserProfile.Roles.MANAGER, "branch": self.branch},
+        )
+        category = Category.objects.create(name="Filters")
+        self.part = Part.objects.create(
+            name="Oil Filter",
+            part_number="OF-7788",
+            category=category,
+            cost_price=Decimal("5.00"),
+            selling_price=Decimal("10.00"),
+        )
+        self.vendor = Vendor.objects.create(vendor_code="VND-7788", name_ar="مورد تجريبي")
+
+    def test_po_partial_and_full_receipt_updates_stock_cost_status_and_audit(self):
+        self.client.login(username="po_manager", password="pass12345")
+        create_response = self.client.post(
+            reverse("purchase_order_create"),
+            {
+                "vendor_id": str(self.vendor.id),
+                "branch_id": str(self.branch.id),
+                "part_id": [str(self.part.id)],
+                "qty_ordered": ["10"],
+                "unit_cost": ["8.00"],
+                "tax_rate": ["15.00"],
+                "discount": ["0.00"],
+                "notes": "PO for filters",
+                "mark_sent": "1",
+            },
+        )
+        self.assertEqual(create_response.status_code, 302)
+        po = PurchaseOrder.objects.latest("id")
+        self.assertEqual(po.status, PurchaseOrder.Status.SENT)
+
+        self.client.post(reverse("purchase_receipt_create", args=[po.id]), {"invoice_ref": "INV-A"})
+        receipt_a = PurchaseReceipt.objects.latest("id")
+        self.client.post(
+            reverse("purchase_receipt_detail", args=[receipt_a.id]),
+            {
+                "po_line_id": str(po.lines.first().id),
+                "qty_received": "4",
+                "unit_cost": "8.00",
+            },
+        )
+        self.client.post(reverse("purchase_receipt_post", args=[receipt_a.id]), {"reason": "first_receive"})
+        po.refresh_from_db()
+        stock = Stock.objects.get(part=self.part, branch=self.branch)
+        cost_row = PartBranchCost.objects.get(part=self.part, branch=self.branch)
+        self.assertEqual(po.status, PurchaseOrder.Status.PARTIAL_RECEIVED)
+        self.assertEqual(stock.quantity, 4)
+        self.assertEqual(cost_row.avg_cost, Decimal("8.0000"))
+
+        self.client.post(reverse("purchase_receipt_create", args=[po.id]), {"invoice_ref": "INV-B"})
+        receipt_b = PurchaseReceipt.objects.latest("id")
+        self.client.post(
+            reverse("purchase_receipt_detail", args=[receipt_b.id]),
+            {
+                "po_line_id": str(po.lines.first().id),
+                "qty_received": "6",
+                "unit_cost": "10.00",
+            },
+        )
+        self.client.post(reverse("purchase_receipt_post", args=[receipt_b.id]), {"reason": "second_receive"})
+
+        po.refresh_from_db()
+        stock.refresh_from_db()
+        cost_row.refresh_from_db()
+        self.assertEqual(po.status, PurchaseOrder.Status.RECEIVED)
+        self.assertEqual(stock.quantity, 10)
+        self.assertEqual(cost_row.avg_cost, Decimal("9.2000"))
+        self.assertTrue(
+            AuditLog.objects.filter(
+                action="purchase_receipt.post",
+                object_type="PurchaseReceipt",
+            ).exists()
+        )
+
+
+class CustomerLedgerWorkflowTests(TestCase):
+    def setUp(self):
+        self.branch = Branch.objects.create(name="Main", code="MAIN")
+        self.cashier = User.objects.create_user(username="ledger_cashier", password="pass12345")
+        UserProfile.objects.update_or_create(
+            user=self.cashier,
+            defaults={"role": UserProfile.Roles.CASHIER, "branch": self.branch},
+        )
+        self.manager = User.objects.create_user(username="ledger_manager", password="pass12345")
+        UserProfile.objects.update_or_create(
+            user=self.manager,
+            defaults={"role": UserProfile.Roles.MANAGER, "branch": self.branch},
+        )
+        category = Category.objects.create(name="Brakes")
+        self.part = Part.objects.create(
+            name="Brake Pad",
+            part_number="BP-200",
+            category=category,
+            cost_price=Decimal("20.00"),
+            selling_price=Decimal("40.00"),
+        )
+        self.stock = Stock.objects.create(part=self.part, branch=self.branch, quantity=20)
+
+    def _checkout_order(self):
+        self.client.login(username="ledger_cashier", password="pass12345")
+        session = self.client.session
+        session["cart"] = {str(self.stock.id): 2}
+        session.save()
+        self.client.post(
+            reverse("finalize_order"),
+            {
+                "discount": "0.00",
+                "phone_number": "0500001111",
+                "customer_name": "Ledger Cust",
+                "payment_method": "cash",
+                "advance_payment": "10.00",
+            },
+        )
+        return Order.objects.latest("id")
+
+    def test_sale_payment_and_credit_note_update_ledger_and_stock(self):
+        order = self._checkout_order()
+        customer = order.customer
+        self.assertIsNotNone(customer)
+        self.assertTrue(
+            CustomerLedgerEntry.objects.filter(
+                customer=customer,
+                order=order,
+                entry_type=CustomerLedgerEntry.EntryType.INVOICE,
+            ).exists()
+        )
+        self.assertTrue(
+            CustomerLedgerEntry.objects.filter(
+                customer=customer,
+                order=order,
+                entry_type=CustomerLedgerEntry.EntryType.PAYMENT,
+            ).exists()
+        )
+
+        self.client.post(
+            reverse("customer_add_payment", args=[customer.id]),
+            {"amount": "5.00", "method": "cash", "reference": "cashbox"},
+        )
+        self.assertTrue(
+            Payment.objects.filter(customer=customer, amount=Decimal("5.00")).exists()
+        )
+
+        self.client.logout()
+        self.client.login(username="ledger_manager", password="pass12345")
+        self.client.post(
+            reverse("credit_note_create", args=[order.id]),
+            {"reason": "returned", "return_to_stock": "1"},
+        )
+        self.stock.refresh_from_db()
+        self.assertGreaterEqual(self.stock.quantity, 19)
+        self.assertTrue(CreditNote.objects.filter(order=order).exists())
+        self.assertTrue(
+            CustomerLedgerEntry.objects.filter(
+                customer=customer,
+                order=order,
+                entry_type=CustomerLedgerEntry.EntryType.CREDIT_NOTE,
+            ).exists()
+        )
+
+
+class BarcodeInsightFlowTests(TestCase):
+    def setUp(self):
+        self.branch = Branch.objects.create(name="Main", code="MAIN")
+        self.manager = User.objects.create_user(username="scan_info", password="pass12345")
+        UserProfile.objects.update_or_create(
+            user=self.manager,
+            defaults={"role": UserProfile.Roles.MANAGER, "branch": self.branch},
+        )
+        category = Category.objects.create(name="Ignition")
+        self.part = Part.objects.create(
+            name="Spark Plug",
+            part_number="SP-100",
+            barcode="6281002003001",
+            category=category,
+            cost_price=Decimal("12.00"),
+            selling_price=Decimal("24.00"),
+        )
+        PartBarcode.objects.create(part=self.part, barcode="6281002003999")
+        Stock.objects.create(part=self.part, branch=self.branch, quantity=8)
+
+    def test_scan_info_redirects_to_part_insight_and_unmatched_to_linking(self):
+        self.client.login(username="scan_info", password="pass12345")
+        response = self.client.post(
+            reverse("scan_dispatch"),
+            {"mode": "info", "scan_code": "6281002003999"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("part_insight", args=[self.part.id]))
+
+        insight_response = self.client.get(reverse("part_insight", args=[self.part.id]))
+        self.assertEqual(insight_response.status_code, 200)
+        self.assertContains(insight_response, self.part.part_number)
+
+        unmatched_response = self.client.post(
+            reverse("scan_dispatch"),
+            {"mode": "info", "scan_code": "NO-BARCODE"},
+        )
+        self.assertEqual(unmatched_response.status_code, 302)
+        self.assertIn(reverse("barcode_unmatched"), unmatched_response.url)
+
+
+class TransferPartialReceiveWorkflowTests(TestCase):
+    def setUp(self):
+        self.branch_a = Branch.objects.create(name="A", code="A")
+        self.branch_b = Branch.objects.create(name="B", code="B")
+        category = Category.objects.create(name="Cooling")
+        self.part = Part.objects.create(
+            name="Water Pump",
+            part_number="WP-33",
+            barcode="6285550011223",
+            category=category,
+            cost_price=Decimal("50.00"),
+            selling_price=Decimal("85.00"),
+        )
+        self.stock_a = Stock.objects.create(part=self.part, branch=self.branch_a, quantity=1)
+        self.stock_b = Stock.objects.create(part=self.part, branch=self.branch_b, quantity=10)
+        self.manager_b = User.objects.create_user(username="tp_manager_b", password="pass12345")
+        UserProfile.objects.update_or_create(
+            user=self.manager_b,
+            defaults={"role": UserProfile.Roles.MANAGER, "branch": self.branch_b},
+        )
+        self.cashier_a = User.objects.create_user(username="tp_cashier_a", password="pass12345")
+        UserProfile.objects.update_or_create(
+            user=self.cashier_a,
+            defaults={"role": UserProfile.Roles.CASHIER, "branch": self.branch_a},
+        )
+        self.transfer = TransferRequest.objects.create(
+            part=self.part,
+            quantity=4,
+            source_branch=self.branch_b,
+            destination_branch=self.branch_a,
+            requested_by=self.cashier_a,
+            status=TransferRequest.Status.REQUESTED,
+        )
+
+    def test_partial_receive_keeps_backorder_open_until_complete(self):
+        self.client.login(username="tp_manager_b", password="pass12345")
+        self.client.post(reverse("transfer_approve", args=[self.transfer.id]), {"reason": "ok"})
+        self.client.post(reverse("transfer_mark_picked_up", args=[self.transfer.id]), {"reason": "picked"})
+        self.client.post(reverse("transfer_mark_delivered", args=[self.transfer.id]), {"reason": "delivered"})
+
+        self.client.logout()
+        self.client.login(username="tp_cashier_a", password="pass12345")
+        self.client.post(
+            reverse("transfer_confirm_receive", args=[self.transfer.id]),
+            {"reason": "partial receive", "receive_qty": "2"},
+        )
+        self.transfer.refresh_from_db()
+        self.assertEqual(self.transfer.status, TransferRequest.Status.DELIVERED)
+        self.assertEqual(self.transfer.received_quantity, 2)
+        self.assertEqual(self.transfer.remaining_quantity, 2)
+
+        self.client.post(
+            reverse("transfer_receive_scan", args=[self.transfer.id]),
+            {"scan_code": "WP-33", "quantity": "2", "reason": "scan receive"},
+        )
+        self.transfer.refresh_from_db()
+        self.stock_a.refresh_from_db()
+        self.stock_b.refresh_from_db()
+        self.assertEqual(self.transfer.status, TransferRequest.Status.RECEIVED)
+        self.assertEqual(self.transfer.received_quantity, 4)
+        self.assertEqual(self.transfer.reserved_quantity, 0)
+        self.assertEqual(self.stock_a.quantity, 5)
+        self.assertEqual(self.stock_b.quantity, 6)
+
+
+class CycleCountWorkflowTests(TestCase):
+    def setUp(self):
+        self.branch = Branch.objects.create(name="Main", code="MAIN")
+        self.manager = User.objects.create_user(username="cc_manager", password="pass12345")
+        UserProfile.objects.update_or_create(
+            user=self.manager,
+            defaults={"role": UserProfile.Roles.MANAGER, "branch": self.branch},
+        )
+        category = Category.objects.create(name="Electrical")
+        self.part = Part.objects.create(
+            name="Battery",
+            part_number="BAT-1",
+            category=category,
+            cost_price=Decimal("100.00"),
+            selling_price=Decimal("150.00"),
+        )
+        Stock.objects.create(part=self.part, branch=self.branch, quantity=10)
+
+    def test_cycle_count_submit_and_approve_adjusts_stock(self):
+        self.client.login(username="cc_manager", password="pass12345")
+        start_response = self.client.post(reverse("cycle_count_list"), {"notes": "monthly"})
+        self.assertEqual(start_response.status_code, 302)
+        session = CycleCountSession.objects.latest("id")
+
+        self.client.post(
+            reverse("cycle_count_detail", args=[session.id]),
+            {"action": "add_line", "part_id": str(self.part.id), "counted_qty": "7"},
+        )
+        self.client.post(reverse("cycle_count_detail", args=[session.id]), {"action": "submit"})
+        self.client.post(reverse("cycle_count_detail", args=[session.id]), {"action": "approve"})
+
+        session.refresh_from_db()
+        stock = Stock.objects.get(part=self.part, branch=self.branch)
+        line = CycleCountLine.objects.get(session=session, part=self.part)
+        self.assertEqual(line.system_qty_snapshot, 10)
+        self.assertEqual(line.variance, -3)
+        self.assertEqual(stock.quantity, 7)
+        self.assertEqual(session.status, CycleCountSession.Status.APPROVED)
+        self.assertTrue(
+            AuditLog.objects.filter(
+                action="cycle_count.approve",
+                object_type="CycleCountSession",
+                object_id=str(session.id),
+            ).exists()
+        )
+
+
+class ViewOnlyPermissionEnforcementTests(TestCase):
+    def setUp(self):
+        self.branch = Branch.objects.create(name="Main", code="MAIN")
+        self.other_branch = Branch.objects.create(name="Other", code="OTH")
+        category = Category.objects.create(name="General")
+        self.part = Part.objects.create(
+            name="Fuse",
+            part_number="FS-1",
+            category=category,
+            cost_price=Decimal("1.00"),
+            selling_price=Decimal("2.00"),
+        )
+        self.stock = Stock.objects.create(part=self.part, branch=self.branch, quantity=10)
+        self.view_only = User.objects.create_user(username="view_only_user", password="pass12345")
+        UserProfile.objects.update_or_create(
+            user=self.view_only,
+            defaults={"role": UserProfile.Roles.CASHIER, "branch": self.branch},
+        )
+        perms = Permission.objects.filter(
+            codename__in=["view_order", "view_transferrequest", "view_stock"]
+        )
+        self.view_only.user_permissions.add(*perms)
+
+    def test_view_only_user_gets_403_on_mutations(self):
+        self.client.login(username="view_only_user", password="pass12345")
+        add_response = self.client.post(reverse("add_to_cart", args=[self.stock.id]), {"quantity": "1"})
+        self.assertEqual(add_response.status_code, 403)
+
+        transfer_response = self.client.post(
+            reverse("transfer_create"),
+            {
+                "part_id": str(self.part.id),
+                "quantity": "1",
+                "to_branch": str(self.other_branch.id),
+                "notes": "try",
+            },
+        )
+        self.assertEqual(transfer_response.status_code, 403)
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class PasswordResetOtpFlowTests(TestCase):
+    def setUp(self):
+        self.branch = Branch.objects.create(name="Reset Branch", code="RST")
+        self.user = User.objects.create_user(
+            username="reset_user",
+            email="reset@example.com",
+            password="pass12345",
+        )
+        UserProfile.objects.update_or_create(
+            user=self.user,
+            defaults={
+                "role": UserProfile.Roles.CASHIER,
+                "branch": self.branch,
+                "phone_number": "0501234567",
+            },
+        )
+
+    def _issue_email_code(self):
+        response = self.client.post(
+            reverse("password_reset_request"),
+            {
+                "username": self.user.username,
+                "channel": "email",
+                "contact": self.user.email,
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("password_reset_verify"))
+        self.assertEqual(len(mail.outbox), 1)
+        match = re.search(r"\b(\d{6})\b", mail.outbox[-1].body)
+        self.assertIsNotNone(match)
+        otp = PasswordResetOtp.objects.latest("id")
+        return otp, match.group(1)
+
+    def test_email_reset_code_sent_and_expires_in_15_minutes(self):
+        otp, _code = self._issue_email_code()
+        self.assertEqual(otp.channel, PasswordResetOtp.Channels.EMAIL)
+        self.assertEqual(otp.destination, self.user.email)
+        self.assertGreater(otp.expires_at, timezone.now() + timedelta(minutes=14))
+        self.assertLess(otp.expires_at, timezone.now() + timedelta(minutes=16))
+
+    def test_phone_reset_code_request_works_with_registered_phone(self):
+        response = self.client.post(
+            reverse("password_reset_request"),
+            {
+                "username": self.user.username,
+                "channel": "phone",
+                "contact": "966501234567",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("password_reset_verify"))
+        otp = PasswordResetOtp.objects.latest("id")
+        self.assertEqual(otp.channel, PasswordResetOtp.Channels.PHONE)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_full_reset_flow_sets_new_password(self):
+        _otp, code = self._issue_email_code()
+        verify_response = self.client.post(reverse("password_reset_verify"), {"code": code})
+        self.assertEqual(verify_response.status_code, 302)
+        self.assertEqual(verify_response.url, reverse("password_reset_set_new"))
+
+        new_password = "AReallyStrongPass123!"
+        set_response = self.client.post(
+            reverse("password_reset_set_new"),
+            {"new_password1": new_password, "new_password2": new_password},
+        )
+        self.assertEqual(set_response.status_code, 302)
+        self.assertEqual(set_response.url, reverse("login"))
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password(new_password))
+        self.assertTrue(self.client.login(username=self.user.username, password=new_password))
+        self.assertIsNotNone(PasswordResetOtp.objects.latest("id").used_at)
+
+    def test_wrong_contact_does_not_issue_code(self):
+        response = self.client.post(
+            reverse("password_reset_request"),
+            {
+                "username": self.user.username,
+                "channel": "email",
+                "contact": "wrong@example.com",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(PasswordResetOtp.objects.count(), 0)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_expired_code_redirects_back_to_request(self):
+        otp, code = self._issue_email_code()
+        otp.expires_at = timezone.now() - timedelta(minutes=1)
+        otp.save(update_fields=["expires_at"])
+
+        response = self.client.post(reverse("password_reset_verify"), {"code": code})
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("password_reset_request"))
+
+    @override_settings(DEBUG=True)
+    @patch("inventory.views.send_mail", side_effect=Exception("smtp unavailable"))
+    def test_email_failure_in_debug_still_allows_verify_step(self, _mock_send_mail):
+        response = self.client.post(
+            reverse("password_reset_request"),
+            {
+                "username": self.user.username,
+                "channel": "email",
+                "contact": self.user.email,
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "تحقق من الرمز")
+        self.assertContains(response, "رمز التحقق (وضع التطوير)")
+        otp = PasswordResetOtp.objects.latest("id")
+        self.assertIsNone(otp.used_at)
+
+
+class EffectivePermissionsCommandTests(TestCase):
+    def test_delta_check_user_effective_perms_outputs_permissions(self):
+        user = User.objects.create_user(username="perm_user", password="pass12345")
+        perm = Permission.objects.get(codename="view_stock")
+        user.user_permissions.add(perm)
+
+        out = StringIO()
+        call_command("delta_check_user_effective_perms", "perm_user", stdout=out)
+        output = out.getvalue()
+        self.assertIn("perm_user", output)
+        self.assertIn("view_stock", output)
 

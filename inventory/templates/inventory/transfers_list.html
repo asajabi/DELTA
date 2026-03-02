@@ -4,41 +4,62 @@
 
 {% block content %}
 <div class="container-fluid px-3 px-lg-4">
-    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
-        <div>
-            <h1 class="h4 mb-1">Inter-Branch Transfers</h1>
-            <p class="text-muted mb-0">Incoming and outgoing transfer requests for your branch scope.</p>
-        </div>
-        <div class="d-flex gap-2">
-            <a href="{% url 'transfer_create' %}" class="btn btn-primary">New Transfer Request | طلب تحويل جديد</a>
-            <a href="{% url 'transfer_approvals' %}" class="btn btn-outline-primary">Approvals</a>
-            <a href="{% url 'transfer_driver_tasks' %}" class="btn btn-outline-dark">Driver Tasks</a>
-            <a href="{% url 'transfer_receive_list' %}" class="btn btn-outline-success">Receive</a>
-        </div>
-    </div>
+    <div class="delta-page-shell">
+        <section class="delta-hero d-flex flex-wrap align-items-start justify-content-between gap-2">
+            <div>
+                <h1 class="h4 mb-1">التحويلات بين الفروع</h1>
+                <p class="text-muted">Track outgoing and incoming transfer requests, approvals, driver flow, and receiving completion.</p>
+            </div>
+            <div class="delta-action-tabs">
+                <a href="{% url 'transfer_create' %}" class="btn btn-light">طلب تحويل جديد</a>
+                <a href="{% url 'transfer_approvals' %}" class="btn btn-outline-light">Approvals</a>
+                <a href="{% url 'transfer_driver_tasks' %}" class="btn btn-outline-light">Driver Tasks</a>
+                <a href="{% url 'transfer_receive_list' %}" class="btn btn-outline-light">Receive</a>
+            </div>
+        </section>
 
-    <div class="card delta-card mb-3">
-        <div class="card-body">
-            <form method="get" class="row g-2 align-items-end">
-                <div class="col-md-4">
-                    <label class="form-label">Status</label>
-                    <select name="status" class="form-select">
-                        <option value="">All statuses</option>
-                        {% for value, label in status_choices %}
-                            <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="col-md-2 d-grid">
-                    <button class="btn btn-outline-secondary" type="submit">Filter</button>
-                </div>
-            </form>
+        <div class="delta-kpi-grid">
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">Results</span>
+                <span class="delta-kpi-value">{{ page_obj.paginator.count|default:0 }}</span>
+            </article>
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">Current Page</span>
+                <span class="delta-kpi-value">{{ page_obj.number|default:1 }}</span>
+            </article>
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">Status Filter</span>
+                <span class="delta-kpi-value">{{ status_filter|default:"All" }}</span>
+            </article>
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">Rows on Page</span>
+                <span class="delta-kpi-value">{{ transfers|length }}</span>
+            </article>
         </div>
-    </div>
 
-    <div class="card delta-card">
-        <div class="card-body">
-            <div class="table-responsive">
+        <div class="card delta-accent-card mt-3">
+            <div class="card-header">Filter</div>
+            <div class="card-body">
+                <form method="get" class="delta-inline-form">
+                    <div>
+                        <label class="form-label">Status</label>
+                        <select name="status" class="form-select">
+                            <option value="">All statuses</option>
+                            {% for value, label in status_choices %}
+                                <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="d-grid">
+                        <button class="btn btn-outline-secondary" type="submit"><i class="fa-solid fa-filter me-1"></i> Apply Filter</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card delta-accent-card delta-table-panel mt-3">
+            <div class="card-header">Transfer Register</div>
+            <div class="card-body table-responsive">
                 <table class="table table-hover align-middle mb-0">
                     <thead>
                         <tr>
@@ -51,12 +72,14 @@
                             <th>Status</th>
                             <th>Reserved</th>
                             <th>Driver</th>
+                            <th>Received</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                     {% for transfer in transfers %}
                         <tr>
-                            <td>{{ transfer.id }}</td>
+                            <td><strong>{{ transfer.id }}</strong></td>
                             <td>{{ transfer.created_at|date:"Y-m-d H:i" }}</td>
                             <td>
                                 {{ transfer.part.name }}
@@ -78,32 +101,43 @@
                                     <span class="badge text-bg-info">Delivered</span>
                                 {% elif transfer.status == 'received' %}
                                     <span class="badge text-bg-success">Received</span>
+                                {% else %}
+                                    <span class="delta-chip">{{ transfer.get_status_display }}</span>
                                 {% endif %}
                             </td>
                             <td>{{ transfer.reserved_quantity }}</td>
                             <td>{{ transfer.driver.username|default:'-' }}</td>
+                            <td>{{ transfer.received_quantity|default:0 }} / {{ transfer.quantity }}</td>
+                            <td>
+                                <div class="d-flex flex-wrap gap-1">
+                                    <a class="btn btn-sm btn-outline-secondary" href="{% url 'transfer_pick_list' transfer.id %}">طباعة قائمة التجهيز</a>
+                                    {% if transfer.status == 'delivered' %}
+                                        <a class="btn btn-sm btn-outline-success" href="{% url 'transfer_receive_list' %}">Receive</a>
+                                    {% endif %}
+                                </div>
+                            </td>
                         </tr>
                     {% empty %}
-                        <tr><td colspan="9" class="text-center text-muted py-5">No transfer requests found.</td></tr>
+                        <tr><td colspan="11" class="py-4"><div class="delta-empty">No transfer requests found.</div></td></tr>
                     {% endfor %}
                     </tbody>
                 </table>
             </div>
         </div>
-    </div>
 
-    {% if page_obj and page_obj.paginator.num_pages > 1 %}
-        <nav class="mt-4">
-            <ul class="pagination justify-content-center">
-                {% if page_obj.has_previous %}
-                    <li class="page-item"><a class="page-link" href="?status={{ status_filter|default:'' }}&page={{ page_obj.previous_page_number }}">Previous</a></li>
-                {% endif %}
-                <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
-                {% if page_obj.has_next %}
-                    <li class="page-item"><a class="page-link" href="?status={{ status_filter|default:'' }}&page={{ page_obj.next_page_number }}">Next</a></li>
-                {% endif %}
-            </ul>
-        </nav>
-    {% endif %}
+        {% if page_obj and page_obj.paginator.num_pages > 1 %}
+            <nav class="mt-4">
+                <ul class="pagination justify-content-center">
+                    {% if page_obj.has_previous %}
+                        <li class="page-item"><a class="page-link" href="?status={{ status_filter|default:'' }}&page={{ page_obj.previous_page_number }}">Previous</a></li>
+                    {% endif %}
+                    <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+                    {% if page_obj.has_next %}
+                        <li class="page-item"><a class="page-link" href="?status={{ status_filter|default:'' }}&page={{ page_obj.next_page_number }}">Next</a></li>
+                    {% endif %}
+                </ul>
+            </nav>
+        {% endif %}
+    </div>
 </div>
 {% endblock %}

@@ -1,0 +1,63 @@
+{% extends "inventory/base.html" %}
+
+{% block title %}قائمة التجهيز {{ transfer.id }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 px-lg-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h4 mb-0">طباعة قائمة التجهيز</h1>
+        <div class="page-actions">
+            <a href="{% url 'transfer_list' %}" class="btn btn-outline-secondary">رجوع</a>
+            <button type="button" class="btn btn-primary" onclick="window.print()">طباعة</button>
+        </div>
+    </div>
+
+    <div class="card delta-card mb-3">
+        <div class="card-body">
+            <div class="row g-2">
+                <div class="col-md-4"><strong>تحويل #:</strong> {{ transfer.id }}</div>
+                <div class="col-md-4"><strong>من:</strong> {{ transfer.source_branch.name }}</div>
+                <div class="col-md-4"><strong>إلى:</strong> {{ transfer.destination_branch.name }}</div>
+                <div class="col-md-4"><strong>تم الإنشاء بواسطة:</strong> {{ transfer.requested_by.username }}</div>
+                <div class="col-md-4"><strong>الحالة:</strong> {{ transfer.get_status_display }}</div>
+                <div class="col-md-4"><strong>الكمية:</strong> {{ transfer.quantity }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card delta-card mb-3">
+        <div class="card-header">مطلوب عناصر</div>
+        <div class="card-body table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th># الصنف</th>
+                        <th>الاسم</th>
+                        <th>الكمية</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>{{ transfer.part.part_number }}</td>
+                        <td>{{ transfer.part.name }}</td>
+                        <td>{{ transfer.quantity }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card delta-card">
+        <div class="card-header">إرشادات الموقع</div>
+        <div class="card-body">
+            <ul class="mb-0">
+                {% for row in location_hints %}
+                    <li>{{ row.location.code }}: {{ row.quantity }}</li>
+                {% empty %}
+                    <li class="text-muted">لا توجد إرشادات موقع متاحة.</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}

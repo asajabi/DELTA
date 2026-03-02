@@ -1,6 +1,6 @@
 ﻿{% extends 'inventory/base.html' %}
 
-{% block title %}Low Stock{% endblock %}
+{% block title %}تنبيه المخزون{% endblock %}
 
 {% block content %}
 <div class="container-fluid px-3 px-lg-4">
@@ -12,7 +12,7 @@
         </div>
     </div>
     <div class="alert alert-info">
-        يظهر التنبيه عندما تكون الكمية المتاحة أقل من أو تساوي <strong>Min stock level</strong> للصنف (ويكون الحد الأدنى أكبر من صفر).
+        يظهر التنبيه عندما تكون الكمية المتاحة أقل من أو تساوي <strong>الحد الأدنى للمخزون</strong> للصنف (ويكون الحد الأدنى أكبر من صفر).
     </div>
 
     {% if is_admin %}
@@ -42,12 +42,12 @@
                 <table class="table table-striped align-middle mb-0">
                     <thead>
                         <tr>
-                            <th>Available</th>
-                            <th>Reserved</th>
-                            <th>Min Level</th>
-                            <th>Part Name</th>
-                            <th>Part Number</th>
-                            <th>Branch</th>
+                            <th>المتاح</th>
+                            <th>المحجوز</th>
+                            <th>الحد الأدنى</th>
+                            <th>اسم الصنف</th>
+                            <th>رقم القطعة</th>
+                            <th>الفرع</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -75,11 +75,11 @@
         <nav class="mt-4">
                 <ul class="pagination justify-content-center">
                 {% if page_obj.has_previous %}
-                    <li class="page-item"><a class="page-link" href="?branch={{ selected_branch|default:'' }}&page={{ page_obj.previous_page_number }}">Previous</a></li>
+                    <li class="page-item"><a class="page-link" href="?branch={{ selected_branch|default:'' }}&page={{ page_obj.previous_page_number }}">السابق</a></li>
                 {% endif %}
                 <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
                 {% if page_obj.has_next %}
-                    <li class="page-item"><a class="page-link" href="?branch={{ selected_branch|default:'' }}&page={{ page_obj.next_page_number }}">Next</a></li>
+                    <li class="page-item"><a class="page-link" href="?branch={{ selected_branch|default:'' }}&page={{ page_obj.next_page_number }}">التالي</a></li>
                 {% endif %}
                 </ul>
             </nav>

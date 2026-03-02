@@ -15,12 +15,13 @@
                 <table class="table table-hover align-middle mb-0">
                     <thead>
                         <tr>
-                            <th>Order ID</th>
-                            <th>Date</th>
-                            <th>Seller</th>
-                            <th>Branch</th>
-                            <th>Total</th>
-                            <th>Items</th>
+                            <th>رقم الطلب</th>
+                            <th>التاريخ</th>
+                            <th>البائع</th>
+                            <th>الفرع</th>
+                            <th>العميل</th>
+                            <th>الإجمالي</th>
+                            <th>العناصر</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -34,12 +35,19 @@
                                 <div class="small text-muted">{{ order.seller.profile.employee_id|default:"-" }}</div>
                             </td>
                             <td>{{ order.branch.name|default:'-' }}</td>
+                            <td>
+                                {% if order.customer %}
+                                    <a href="{% url 'customer_profile' order.customer.id %}">{{ order.customer.name }}</a>
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
                             <td>{{ order.grand_total|floatformat:2 }} SAR</td>
                             <td>{{ order.items.count }}</td>
-                            <td><a href="{% url 'receipt_view' order.order_id %}" class="btn btn-sm btn-primary">Reprint Receipt</a></td>
+                            <td><a href="{% url 'receipt_view' order.order_id %}" class="btn btn-sm btn-primary">طباعة الاستلام</a></td>
                         </tr>
                     {% empty %}
-                        <tr><td colspan="7" class="text-center text-muted py-5">No orders found.</td></tr>
+                        <tr><td colspan="8" class="text-center text-muted py-5">لا توجد طلبات.</td></tr>
                     {% endfor %}
                     </tbody>
                 </table>
@@ -51,11 +59,11 @@
         <nav class="mt-4">
             <ul class="pagination justify-content-center">
                 {% if page_obj.has_previous %}
-                    <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a></li>
+                    <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">السابق</a></li>
                 {% endif %}
                 <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
                 {% if page_obj.has_next %}
-                    <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a></li>
+                    <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">التالي</a></li>
                 {% endif %}
             </ul>
         </nav>

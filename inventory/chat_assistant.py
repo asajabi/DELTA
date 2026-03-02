@@ -193,6 +193,20 @@ def _extract_part_query(message: str, action: str, qty: int | None, location_hin
         "show",
         "find",
         "check",
+        "where",
+        "is",
+        "are",
+        "can",
+        "could",
+        "would",
+        "please",
+        "me",
+        "tell",
+        "locate",
+        "locates",
+        "locating",
+        "available",
+        "availability",
         "how",
         "many",
         "left",
@@ -425,14 +439,30 @@ def lookup_stock(part_query, branch_scope, include_locations):
     if not query:
         return {"rows": [], "summary": "Please provide a part name or part number."}
 
-    part_qs = Part.objects.filter(
-        Q(part_number__icontains=query)
-        | Q(name__icontains=query)
-        | Q(barcode__icontains=query)
-    ).order_by("part_number")
-    if branch_scope is not None:
-        part_qs = part_qs.filter(Q(stock__branch=branch_scope) | Q(stock_locations__branch=branch_scope)).distinct()
-    parts = list(part_qs[:20])
+    # Natural chat phrases like "where is OIL-1234" should still find part numbers.
+    query_candidates = [query]
+    if " " in query:
+        token_candidates = [t for t in re.findall(r"[A-Za-z0-9\-]+", query) if len(t) >= 2]
+        prioritized = [t for t in token_candidates if re.search(r"\d", t)]
+        for candidate in prioritized + token_candidates:
+            candidate = candidate.strip()
+            if candidate and candidate not in query_candidates:
+                query_candidates.append(candidate)
+
+    parts = []
+    matched_query = query
+    for candidate in query_candidates:
+        part_qs = Part.objects.filter(
+            Q(part_number__icontains=candidate)
+            | Q(name__icontains=candidate)
+            | Q(barcode__icontains=candidate)
+        ).order_by("part_number")
+        if branch_scope is not None:
+            part_qs = part_qs.filter(Q(stock__branch=branch_scope) | Q(stock_locations__branch=branch_scope)).distinct()
+        parts = list(part_qs[:20])
+        if parts:
+            matched_query = candidate
+            break
     if not parts:
         return {"rows": [], "summary": f"No stock matched '{query}'."}
 
@@ -454,7 +484,7 @@ def lookup_stock(part_query, branch_scope, include_locations):
             }
             for row in stock_qs
         ]
-        return {"rows": rows, "summary": f"Found {len(rows)} stock-location rows for '{query}'."}
+        return {"rows": rows, "summary": f"Found {len(rows)} stock-location rows for '{matched_query}'."}
 
     stock_qs = Stock.objects.select_related("part", "branch").filter(part__in=parts).order_by("part__part_number", "branch__name")
     if branch_scope is not None:
@@ -468,7 +498,7 @@ def lookup_stock(part_query, branch_scope, include_locations):
         }
         for row in stock_qs
     ]
-    return {"rows": rows, "summary": f"Found {len(rows)} stock rows for '{query}'."}
+    return {"rows": rows, "summary": f"Found {len(rows)} stock rows for '{matched_query}'."}
 
 
 def add_stock(part_number, branch, location, qty, reason, actor: User | None = None):

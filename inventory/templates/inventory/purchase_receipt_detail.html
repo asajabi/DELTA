@@ -1,0 +1,112 @@
+﻿{% extends "inventory/base.html" %}
+
+{% block title %}سند استلام GRN-{{ receipt.id }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 px-lg-4">
+    <div class="delta-page-shell">
+        <section class="delta-hero d-flex flex-wrap align-items-start justify-content-between gap-2">
+            <div>
+                <h1 class="h4 mb-1">GRN-{{ receipt.id }}</h1>
+                <p class="text-muted">{{ receipt.po.po_number }} | {{ receipt.branch.name }} | {{ receipt.get_status_display }}</p>
+            </div>
+            <div class="page-actions">
+                <a href="{% url 'purchase_receipt_list' %}" class="btn btn-outline-secondary">رجوع</a>
+                {% if receipt.status == 'draft' %}
+                    <form method="post" action="{% url 'purchase_receipt_post' receipt.id %}" class="d-inline">
+                        {% csrf_token %}
+                        <input type="hidden" name="reason" value="manual_grn_post">
+                        <button class="btn btn-primary" type="submit"><i class="fa-solid fa-box-check me-1"></i> ترحيل سند الاستلام</button>
+                    </form>
+                {% endif %}
+            </div>
+        </section>
+
+        <div class="card delta-accent-card delta-table-panel mb-3">
+            <div class="card-header">بنود الاستلام</div>
+            <div class="card-body table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>الصنف</th>
+                            <th>الكمية</th>
+                            <th>تكلفة الوحدة</th>
+                            <th>الموقع</th>
+                            <th>الدفعة/التشغيلة</th>
+                            <th>تاريخ الانتهاء</th>
+                            <th>الإجمالي</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for line in lines %}
+                        <tr>
+                            <td><strong>{{ line.po_line.part.part_number }}</strong> - {{ line.po_line.part.name }}</td>
+                            <td>{{ line.qty_received }}</td>
+                            <td>{{ line.unit_cost }}</td>
+                            <td>{{ line.location.code|default:'-' }}</td>
+                            <td>{{ line.batch_lot|default:'-' }}</td>
+                            <td>{{ line.expiry|default:'-' }}</td>
+                            <td>{{ line.line_total }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="7" class="py-4"><div class="delta-empty">لا توجد بنود استلام حتى الآن.</div></td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        {% if receipt.status == 'draft' %}
+        <div class="card delta-accent-card">
+            <div class="card-header">إضافة بند استلام (يدوي أو عبر المسح)</div>
+            <div class="card-body">
+                <form method="post" class="row g-2">
+                    {% csrf_token %}
+                    <div class="col-lg-4">
+                        <label class="form-label">سطر أمر الشراء</label>
+                        <select name="po_line_id" class="form-select">
+                            <option value="">اختر السطر</option>
+                            {% for l in po_lines_open %}
+                                <option value="{{ l.id }}">{{ l.part.part_number }} - المتبقي {{ l.remaining_qty }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-lg-3">
+                        <label class="form-label">أو امسح الكود</label>
+                        <input type="text" name="scan_code" class="form-control" placeholder="باركود / رقم قطعة">
+                    </div>
+                    <div class="col-lg-2">
+                        <label class="form-label">الكمية</label>
+                        <input type="number" min="1" name="qty_received" class="form-control" required>
+                    </div>
+                    <div class="col-lg-3">
+                        <label class="form-label">تكلفة الوحدة</label>
+                        <input type="number" min="0" step="0.0001" name="unit_cost" class="form-control">
+                    </div>
+                    <div class="col-lg-3">
+                        <label class="form-label">الموقع</label>
+                        <select name="location_id" class="form-select">
+                            <option value="">غير محدد / افتراضي</option>
+                            {% for loc in locations %}
+                                <option value="{{ loc.id }}">{{ loc.code }} - {{ loc.name_ar|default:loc.name_en }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-lg-3">
+                        <label class="form-label">الدفعة/التشغيلة</label>
+                        <input type="text" name="batch_lot" class="form-control">
+                    </div>
+                    <div class="col-lg-3">
+                        <label class="form-label">تاريخ الانتهاء</label>
+                        <input type="date" name="expiry" class="form-control">
+                    </div>
+                    <div class="col-lg-3 d-grid align-self-end">
+                        <button class="btn btn-primary" type="submit"><i class="fa-solid fa-plus me-1"></i> إضافة بند</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

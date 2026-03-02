@@ -4,14 +4,36 @@
 
 {% block content %}
 <div class="container-fluid px-3 px-lg-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h1 class="h4 mb-0">Receiving Confirmation</h1>
-        <a href="{% url 'transfer_list' %}" class="btn btn-outline-secondary">All Transfers</a>
-    </div>
+    <div class="delta-page-shell">
+        <section class="delta-hero d-flex flex-wrap align-items-start justify-content-between gap-2">
+            <div>
+                <h1 class="h4 mb-1">استلام التحويلات</h1>
+                <p class="text-muted">Confirm delivered transfers, scan incoming parts, and keep branch stock synchronized.</p>
+            </div>
+            <div class="delta-action-tabs">
+                <a href="{% url 'transfer_list' %}" class="btn btn-outline-light">All Transfers</a>
+                <a href="{% url 'transfer_driver_tasks' %}" class="btn btn-outline-light">Driver Tasks</a>
+            </div>
+        </section>
 
-    <div class="card delta-card">
-        <div class="card-body">
-            <div class="table-responsive">
+        <div class="delta-kpi-grid">
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">Records</span>
+                <span class="delta-kpi-value">{{ page_obj.paginator.count|default:0 }}</span>
+            </article>
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">Current Page</span>
+                <span class="delta-kpi-value">{{ page_obj.number|default:1 }}</span>
+            </article>
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">Rows on Page</span>
+                <span class="delta-kpi-value">{{ transfers|length }}</span>
+            </article>
+        </div>
+
+        <div class="card delta-accent-card delta-table-panel mt-3">
+            <div class="card-header">Pending and Completed Receives</div>
+            <div class="card-body table-responsive">
                 <table class="table table-hover align-middle mb-0">
                     <thead>
                         <tr>
@@ -22,49 +44,91 @@
                             <th>To</th>
                             <th>Driver</th>
                             <th>Delivered At</th>
+                            <th>Progress</th>
+                            <th>Status</th>
                             <th>Action</th>
                         </tr>
                     </thead>
                     <tbody>
                     {% for transfer in transfers %}
                         <tr>
-                            <td>{{ transfer.id }}</td>
-                            <td>{{ transfer.part.name }} <span class="text-muted small">({{ transfer.part.part_number }})</span></td>
+                            <td><strong>{{ transfer.id }}</strong></td>
+                            <td>
+                                {{ transfer.part.name }}
+                                <div class="small text-muted">{{ transfer.part.part_number }}</div>
+                            </td>
                             <td>{{ transfer.quantity }}</td>
                             <td>{{ transfer.source_branch.name }}</td>
                             <td>{{ transfer.destination_branch.name }}</td>
                             <td>{{ transfer.driver.username|default:'-' }}</td>
-                            <td>{{ transfer.delivered_at|date:"Y-m-d H:i" }}</td>
+                            <td>{{ transfer.delivered_at|date:"Y-m-d H:i"|default:"-" }}</td>
                             <td>
-                                <form method="post" action="{% url 'transfer_confirm_receive' transfer.id %}" onsubmit="return confirm('Confirm receiving this transfer?');">
-                                    {% csrf_token %}
-                                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                                    <input type="text" name="reason" class="form-control form-control-sm mb-1" placeholder="Receiving reason" required>
-                                    <button class="btn btn-sm btn-success" type="submit">Confirm Receive</button>
-                                </form>
+                                <strong>{{ transfer.received_quantity|default:0 }} / {{ transfer.quantity }}</strong>
+                                {% if transfer.remaining_quantity > 0 %}
+                                    <div class="small text-muted">Remaining: {{ transfer.remaining_quantity }}</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if transfer.status == 'received' %}
+                                    <span class="badge text-bg-success">Completed</span>
+                                {% else %}
+                                    <span class="badge text-bg-info">{{ transfer.get_status_display }}</span>
+                                {% endif %}
+                            </td>
+                            <td style="min-width: 270px;">
+                                {% if transfer.status != 'received' %}
+                                    <form method="post" action="{% url 'transfer_receive_scan' transfer.id %}" class="delta-soft-panel mb-2">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                        <label class="form-label small mb-1">Scan Receive</label>
+                                        <div class="input-group input-group-sm mb-1">
+                                            <input type="text" name="scan_code" class="form-control" placeholder="Scan barcode / part#">
+                                            <input type="number" min="1" name="quantity" class="form-control" style="max-width: 90px;" value="1">
+                                        </div>
+                                        <input type="text" name="reason" class="form-control form-control-sm mb-2" placeholder="Scan receive reason">
+                                        <button class="btn btn-sm btn-outline-primary w-100" type="submit">Apply Scan</button>
+                                    </form>
+
+                                    <form method="post" action="{% url 'transfer_confirm_receive' transfer.id %}" class="delta-soft-panel" onsubmit="return confirm('Confirm receiving this transfer?');">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                        <label class="form-label small mb-1">Manual Confirm</label>
+                                        <input type="number" min="1" max="{{ transfer.remaining_quantity }}" name="receive_qty" class="form-control form-control-sm mb-1" value="{{ transfer.remaining_quantity }}">
+                                        <input type="text" name="reason" class="form-control form-control-sm mb-1" placeholder="Receiving reason" required>
+                                        {% if nav_is_manager %}
+                                            <div class="form-check mb-2">
+                                                <input class="form-check-input" type="checkbox" name="manager_override" id="override_{{ transfer.id }}">
+                                                <label class="form-check-label small" for="override_{{ transfer.id }}">Manager override (allow over receive)</label>
+                                            </div>
+                                        {% endif %}
+                                        <button class="btn btn-sm btn-success w-100" type="submit">Confirm Receive</button>
+                                    </form>
+                                {% else %}
+                                    <span class="delta-chip">No pending action</span>
+                                {% endif %}
                             </td>
                         </tr>
                     {% empty %}
-                        <tr><td colspan="8" class="text-center text-muted py-5">No delivered transfers pending confirmation.</td></tr>
+                        <tr><td colspan="10" class="py-4"><div class="delta-empty">No delivered transfers pending confirmation.</div></td></tr>
                     {% endfor %}
                     </tbody>
                 </table>
             </div>
         </div>
-    </div>
 
-    {% if page_obj and page_obj.paginator.num_pages > 1 %}
-        <nav class="mt-4">
-            <ul class="pagination justify-content-center">
-                {% if page_obj.has_previous %}
-                    <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a></li>
-                {% endif %}
-                <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
-                {% if page_obj.has_next %}
-                    <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a></li>
-                {% endif %}
-            </ul>
-        </nav>
-    {% endif %}
+        {% if page_obj and page_obj.paginator.num_pages > 1 %}
+            <nav class="mt-4">
+                <ul class="pagination justify-content-center">
+                    {% if page_obj.has_previous %}
+                        <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a></li>
+                    {% endif %}
+                    <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+                    {% if page_obj.has_next %}
+                        <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a></li>
+                    {% endif %}
+                </ul>
+            </nav>
+        {% endif %}
+    </div>
 </div>
 {% endblock %}

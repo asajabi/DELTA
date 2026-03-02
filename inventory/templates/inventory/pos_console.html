@@ -1,6 +1,6 @@
 ﻿{% extends 'inventory/base.html' %}
 
-{% block title %}POS Console{% endblock %}
+{% block title %}نقطة البيع{% endblock %}
 
 {% block head_extra %}
 <style>
@@ -35,6 +35,36 @@
             grid-template-columns: 1fr;
         }
     }
+
+    @media (max-width: 768px) {
+        .pos-grid {
+            gap: 0.75rem;
+        }
+
+        .container-fluid > .d-flex {
+            align-items: flex-start !important;
+            flex-direction: column;
+            gap: 0.45rem;
+        }
+
+        .card .card-body {
+            padding: 0.85rem;
+        }
+
+        .search-input {
+            font-size: 1rem;
+        }
+    }
+
+    @media (max-width: 576px) {
+        .total-box {
+            padding: 0.75rem;
+        }
+
+        .total-box .value {
+            font-size: 1.55rem;
+        }
+    }
 </style>
 {% endblock %}
 
@@ -57,16 +87,16 @@
     <div class="pos-grid">
         <div class="vstack gap-3">
             <div class="card delta-card">
-                <div class="card-body">
+                <div class="card-body" data-no-force-ar>
                     <form id="pos-quick-scan-form" method="post" action="{% url 'scan_dispatch' %}" class="row g-2 align-items-end mb-3">
                         {% csrf_token %}
                         <input type="hidden" name="action" value="scan">
                         <input type="hidden" name="mode" value="pos">
                         <input type="hidden" name="next" value="{% url 'pos_console' %}">
                         <div class="col-md-7">
-                            <label class="form-label">Quick Scan (Auto add to cart)</label>
+                            <label class="form-label">مسح سريع (إضافة تلقائية للسلة)</label>
                             <div class="input-group">
-                                <input id="pos-scan-input" type="text" name="scan_code" class="form-control search-input" autocomplete="off" autofocus placeholder="Scan barcode / part number then Enter">
+                                <input id="pos-scan-input" type="text" name="scan_code" class="form-control search-input" autocomplete="off" autofocus placeholder="امسح الباركود أو رقم القطعة ثم Enter">
                                 <button
                                     type="button"
                                     class="btn btn-outline-light"
@@ -74,26 +104,26 @@
                                     data-barcode-form="#pos-quick-scan-form"
                                     data-barcode-auto-submit="true"
                                 >
-                                    <i class="fa-solid fa-camera"></i> Camera
+                                    <i class="fa-solid fa-camera"></i> كاميرا
                                 </button>
                             </div>
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label">Qty</label>
+                            <label class="form-label">الكمية</label>
                             <input type="number" name="quantity" min="1" value="1" class="form-control">
                         </div>
                         <div class="col-md-1 d-grid">
-                            <button class="btn btn-outline-success" type="submit">Scan Add</button>
+                            <button class="btn btn-outline-success" type="submit">إضافة بعد المسح</button>
                         </div>
                         <div class="col-md-2 d-grid">
-                            <button class="btn btn-outline-secondary" type="submit" formaction="{% url 'scan_dispatch' %}" name="action" value="undo">Undo Scan</button>
+                            <button class="btn btn-outline-secondary" type="submit" formaction="{% url 'scan_dispatch' %}" name="action" value="undo">تراجع عن المسح</button>
                         </div>
                     </form>
                     <form id="pos-search-form" method="get" class="row g-2 align-items-end">
                         <div class="col-md-9">
-                            <label class="form-label">Scan / Search</label>
+                            <label class="form-label">مسح / بحث</label>
                             <div class="input-group">
-                                <input id="pos-input" type="text" name="q" value="{{ query }}" class="form-control search-input" autocomplete="off" placeholder="Barcode / Part name / Part number">
+                                <input id="pos-input" type="text" name="q" value="{{ query }}" class="form-control search-input" autocomplete="off" placeholder="باركود / اسم الصنف / رقم القطعة">
                                 <button
                                     type="button"
                                     class="btn btn-outline-secondary"
@@ -194,13 +224,13 @@
             </div>
 
             <div class="total-box">
-                <div class="small text-light">SUBTOTAL</div>
+                <div class="small text-light">الإجمالي الفرعي</div>
                 <div class="value">{{ subtotal|floatformat:2 }} SAR</div>
             </div>
 
             <div class="d-grid gap-2">
                 <a href="{% url 'cart_view' %}" id="pay-btn" class="btn btn-success btn-lg"><i class="fa-solid fa-credit-card"></i> الدفع</a>
-                <form method="post" action="{% url 'clear_cart' %}" onsubmit="return confirm('Clear current cart?');">
+                <form method="post" action="{% url 'clear_cart' %}" onsubmit="return confirm('هل تريد تفريغ السلة الحالية؟');">
                     {% csrf_token %}
                     <button class="btn btn-outline-danger w-100" type="submit"><i class="fa-solid fa-trash"></i> إفراغ السلة</button>
                 </form>

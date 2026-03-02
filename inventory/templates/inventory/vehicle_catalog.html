@@ -1,35 +1,939 @@
-{% extends 'inventory/base.html' %}
+﻿{% extends 'inventory/base.html' %}
 
-{% block title %}Select Car{% endblock %}
+{% block title %}Select Your Car{% endblock %}
+
+{% block head_extra %}
+<style>
+    :root {
+        --catalog-ink: #10263f;
+        --catalog-muted: #607590;
+        --catalog-blue-950: #081b30;
+        --catalog-blue-900: #0b2d4f;
+        --catalog-blue-700: #0d5d9e;
+        --catalog-blue-100: #e7f1fb;
+        --catalog-border: #d4e0ee;
+        --catalog-surface: #ffffff;
+    }
+
+    .catalog-shell {
+        max-width: 1540px;
+        padding-top: 1rem;
+        padding-bottom: 2rem;
+    }
+
+    .catalog-hero-wrap {
+        border-radius: 1.2rem;
+        overflow: hidden;
+        border: 1px solid var(--catalog-border);
+        background: var(--catalog-surface);
+        box-shadow: 0 16px 34px rgba(8, 44, 80, 0.12);
+    }
+
+    .catalog-hero {
+        background:
+            radial-gradient(circle at 10% 0, rgba(255, 255, 255, 0.25) 0%, rgba(255, 255, 255, 0.06) 38%, transparent 58%),
+            linear-gradient(115deg, var(--catalog-blue-900) 0%, var(--catalog-blue-700) 60%, #2a8dd7 100%);
+        color: #fff;
+        padding: 1.15rem 1.2rem;
+    }
+
+    .catalog-title {
+        margin: 0;
+        font-size: clamp(1.35rem, 2.4vw, 2.05rem);
+        font-weight: 700;
+        letter-spacing: 0.01em;
+        font-family: "Tajawal", "Segoe UI", Tahoma, sans-serif;
+    }
+
+    .catalog-subtitle {
+        margin: 0.38rem 0 0;
+        max-width: 760px;
+        color: rgba(255, 255, 255, 0.92);
+        font-size: 0.92rem;
+    }
+
+    .catalog-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: center;
+    }
+
+    .btn-catalog {
+        border-radius: 0.68rem;
+        padding: 0.38rem 0.72rem;
+        font-weight: 600;
+    }
+
+    .catalog-stats {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.75rem;
+        padding: 0.8rem 1rem;
+        background: linear-gradient(180deg, #fbfdff 0%, #f3f8ff 100%);
+        border-top: 1px solid rgba(11, 95, 165, 0.16);
+    }
+
+    .catalog-stat {
+        border: 1px solid var(--catalog-border);
+        border-radius: 0.9rem;
+        background: var(--catalog-surface);
+        padding: 0.55rem 0.72rem;
+        min-height: 70px;
+    }
+
+    .catalog-stat-label {
+        font-size: 0.78rem;
+        color: var(--catalog-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-weight: 700;
+    }
+
+    .catalog-stat-value {
+        margin-top: 0.14rem;
+        font-size: 1.2rem;
+        color: var(--catalog-ink);
+        font-weight: 700;
+        line-height: 1.1;
+    }
+
+    .catalog-workbench {
+        margin-top: 1rem;
+        border: 1px solid var(--catalog-border);
+        border-radius: 1rem;
+        background: var(--catalog-surface);
+        box-shadow: 0 8px 24px rgba(24, 52, 84, 0.07);
+        padding: 0.75rem;
+    }
+
+    .catalog-controls-grid {
+        display: grid;
+        grid-template-columns: minmax(240px, 2fr) repeat(3, minmax(150px, 1fr)) auto auto auto auto;
+        gap: 0.55rem;
+        align-items: center;
+    }
+
+    .catalog-search,
+    .catalog-select {
+        min-height: 38px;
+        border-radius: 0.68rem;
+        border: 1px solid #b9cbe0;
+        font-size: 0.88rem;
+    }
+
+    .catalog-search {
+        padding-inline: 0.78rem;
+    }
+
+    .catalog-select {
+        background-color: #fff;
+    }
+
+    .btn-catalog-outline {
+        border: 1px solid #bad0ea;
+        background: #fff;
+        color: #1d3c60;
+    }
+
+    .btn-catalog-outline:hover {
+        background: #edf5ff;
+        color: #143659;
+        border-color: #8eb0d6;
+    }
+
+    .catalog-result-chip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid #c6d8ee;
+        border-radius: 999px;
+        background: #eef5ff;
+        min-height: 38px;
+        padding: 0 0.8rem;
+        color: #17416f;
+        font-weight: 700;
+        font-size: 0.82rem;
+        white-space: nowrap;
+    }
+
+    .catalog-layout {
+        margin-top: 1rem;
+        display: grid;
+        grid-template-columns: 285px minmax(0, 1fr);
+        gap: 1rem;
+        align-items: start;
+    }
+
+    .make-directory {
+        position: sticky;
+        top: 78px;
+        border: 1px solid var(--catalog-border);
+        border-radius: 1rem;
+        background: var(--catalog-surface);
+        padding: 0.85rem;
+        box-shadow: 0 10px 24px rgba(22, 52, 88, 0.08);
+        max-height: calc(100vh - 104px);
+        overflow: auto;
+    }
+
+    .make-directory-title {
+        margin-bottom: 0.65rem;
+        font-size: 0.85rem;
+        color: var(--catalog-muted);
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    .make-nav-link {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        text-decoration: none;
+        color: #20324a;
+        border: 1px solid #d3e0ee;
+        border-radius: 0.7rem;
+        padding: 0.42rem 0.55rem;
+        font-size: 0.88rem;
+        margin-bottom: 0.45rem;
+        background: linear-gradient(180deg, #fcfdff, #f4f8fd);
+        transition: all 0.16s ease;
+    }
+
+    .make-nav-link:hover {
+        border-color: var(--catalog-blue-700);
+        color: var(--catalog-blue-900);
+        background: #eaf4ff;
+        transform: translateY(-1px);
+    }
+
+    .make-nav-link-count {
+        min-width: 26px;
+        text-align: center;
+        background: #e6effc;
+        border-radius: 999px;
+        color: #113f75;
+        font-weight: 700;
+        font-size: 0.76rem;
+        padding: 0.05rem 0.35rem;
+    }
+
+    .catalog-content {
+        min-width: 0;
+    }
+
+    .empty-state {
+        display: none;
+        border: 1px dashed #bfd2ea;
+        border-radius: 1rem;
+        padding: 2rem 1rem;
+        text-align: center;
+        color: var(--catalog-muted);
+        background: #f8fbff;
+        font-weight: 600;
+    }
+
+    .make-panel {
+        border: 1px solid var(--catalog-border);
+        border-radius: 1rem;
+        background: var(--catalog-surface);
+        margin-bottom: 1rem;
+        box-shadow: 0 8px 20px rgba(20, 50, 82, 0.06);
+        overflow: hidden;
+    }
+
+    .make-toggle {
+        width: 100%;
+        border: 0;
+        background:
+            radial-gradient(circle at 92% 18%, rgba(130, 182, 236, 0.22) 0%, rgba(130, 182, 236, 0) 45%),
+            linear-gradient(180deg, var(--catalog-blue-900), #123e67);
+        padding: 0.84rem 0.95rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.8rem;
+        text-align: left;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        cursor: pointer;
+    }
+
+    .make-panel-main {
+        min-width: 0;
+    }
+
+    .make-name {
+        margin: 0;
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #f4f9ff;
+    }
+
+    .make-sub {
+        margin-top: 0.2rem;
+        color: rgba(230, 241, 252, 0.9);
+        font-size: 0.84rem;
+    }
+
+    .make-meta {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        flex-wrap: wrap;
+    }
+
+    .meta-pill {
+        background: rgba(255, 255, 255, 0.14);
+        color: #f8fcff;
+        border-radius: 999px;
+        padding: 0.22rem 0.58rem;
+        font-size: 0.78rem;
+        font-weight: 700;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+    }
+
+    .make-chevron {
+        color: #d7eafd;
+        font-size: 1rem;
+        transition: transform 0.2s ease;
+        flex-shrink: 0;
+    }
+
+    .make-panel.is-collapsed .make-chevron {
+        transform: rotate(-90deg);
+    }
+
+    .make-panel-body {
+        padding: 0.8rem;
+        background: #f8fbff;
+    }
+
+    .make-panel.is-collapsed .make-panel-body {
+        display: none;
+    }
+
+    .model-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 0.7rem;
+        align-items: start;
+    }
+
+    .model-row {
+        border: 1px solid #cfe0f3;
+        border-radius: 0.85rem;
+        background: #fff;
+        overflow: hidden;
+        box-shadow: 0 3px 12px rgba(15, 52, 93, 0.06);
+        align-self: start;
+    }
+
+    .model-row:not(.is-collapsed) {
+        border-color: #9ec0e6;
+        box-shadow: 0 10px 24px rgba(15, 63, 110, 0.14);
+    }
+
+    .model-toggle {
+        width: 100%;
+        border: 0;
+        background:
+            linear-gradient(180deg, #fafdff, #eef5ff);
+        padding: 0.92rem 0.82rem;
+        min-height: 84px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.7rem;
+        text-align: left;
+        cursor: pointer;
+        transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+    }
+
+    .model-toggle:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(16, 66, 115, 0.12);
+        background: linear-gradient(180deg, #ffffff, #e9f2ff);
+    }
+
+    .model-title-wrap {
+        min-width: 0;
+    }
+
+    .model-title {
+        margin: 0;
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: #1b3655;
+        overflow-wrap: anywhere;
+    }
+
+    .model-meta {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        flex-shrink: 0;
+    }
+
+    .year-count {
+        background: var(--catalog-blue-100);
+        color: #0d4b89;
+        border-radius: 999px;
+        padding: 0.12rem 0.5rem;
+        font-size: 0.75rem;
+        font-weight: 700;
+        white-space: nowrap;
+        border: 1px solid #c8daf2;
+    }
+
+    .model-chevron {
+        color: #56779d;
+        font-size: 0.95rem;
+        transition: transform 0.18s ease;
+    }
+
+    .model-row.is-collapsed .model-chevron {
+        transform: rotate(-90deg);
+    }
+
+    .year-row {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 0.36rem;
+        padding: 0 0.62rem 0.62rem;
+        border-top: 1px solid #eaf1fa;
+        background: #fbfdff;
+        max-height: 250px;
+        opacity: 1;
+        overflow-x: hidden;
+        overflow-y: auto;
+        transition: max-height 0.26s ease, opacity 0.18s ease, padding 0.18s ease;
+    }
+
+    .model-row.is-collapsed .year-row {
+        max-height: 0;
+        opacity: 0;
+        padding: 0 0.62rem 0;
+        border-top-color: transparent;
+    }
+
+    .year-link {
+        border: 1px solid #b8cae2;
+        border-radius: 999px;
+        text-decoration: none;
+        text-align: center;
+        font-size: 0.79rem;
+        min-height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.12rem 0.28rem;
+        color: #1f334c;
+        background: #fff;
+        font-weight: 700;
+        transition: all 0.14s ease;
+    }
+
+    .year-link:hover {
+        border-color: var(--catalog-blue-700);
+        color: var(--catalog-blue-900);
+        background: #edf6ff;
+        transform: translateY(-1px);
+    }
+
+    .year-row::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    .year-row::-webkit-scrollbar-thumb {
+        background: #c6d8ed;
+        border-radius: 999px;
+    }
+
+    @media (max-width: 1280px) {
+        .catalog-controls-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    @media (max-width: 992px) {
+        .catalog-stats {
+            grid-template-columns: 1fr;
+        }
+
+        .catalog-layout {
+            grid-template-columns: 1fr;
+        }
+
+        .make-directory {
+            position: static;
+            max-height: 260px;
+        }
+
+        .catalog-controls-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .year-row {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+    }
+
+    @media (max-width: 768px) {
+        .catalog-shell {
+            padding-top: 0.45rem;
+            padding-bottom: 1.1rem;
+        }
+
+        .catalog-hero {
+            padding: 0.9rem;
+        }
+
+        .catalog-title {
+            font-size: 1.4rem;
+            line-height: 1.3;
+        }
+
+        .catalog-subtitle {
+            font-size: 0.84rem;
+            margin-top: 0.28rem;
+        }
+
+        .catalog-actions {
+            width: 100%;
+        }
+
+        .catalog-actions .btn {
+            width: 100%;
+        }
+
+        .catalog-workbench {
+            padding: 0.62rem;
+        }
+
+        .catalog-controls-grid > * {
+            width: 100%;
+            min-width: 0;
+        }
+
+        .catalog-result-chip {
+            width: 100%;
+        }
+
+        .make-directory {
+            max-height: 220px;
+            padding: 0.7rem;
+        }
+
+        .make-toggle {
+            padding: 0.72rem 0.75rem;
+            gap: 0.5rem;
+        }
+
+        .make-name {
+            font-size: 0.96rem;
+        }
+
+        .model-toggle {
+            min-height: 68px;
+            padding: 0.72rem 0.68rem;
+        }
+
+        .model-title {
+            font-size: 1.03rem;
+        }
+
+        .year-row {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 0.32rem;
+            padding: 0 0.5rem 0.5rem;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .catalog-title {
+            font-size: 1.22rem;
+        }
+
+        .catalog-stat {
+            min-height: 62px;
+        }
+
+        .catalog-stat-value {
+            font-size: 1.05rem;
+        }
+
+        .model-list {
+            grid-template-columns: 1fr;
+        }
+
+        .year-row {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="container">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>🚗 Select Your Car</h2>
-        <a href="{% url 'part_search' %}" class="btn btn-outline-secondary">← Back to Dashboard</a>
-    </div>
-
-    <div class="row g-4">
-        {% for model_name, years in grouped_vehicles.items %}
-        <div class="col-md-6 col-lg-4">
-            <div class="card shadow-sm h-100 border-0">
-                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-                    <span class="fw-bold">{{ model_name }}</span>
-                    <span class="badge bg-secondary">{{ years|length }} Years</span>
+<div class="container-fluid px-3 px-lg-4 catalog-shell">
+    <section class="catalog-hero-wrap">
+        <div class="catalog-hero">
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+                <div>
+                    <h1 class="catalog-title">اختر سيارتك</h1>
+                    <p class="catalog-subtitle">Choose make, model, and year in fewer steps, then jump straight to matching parts.</p>
                 </div>
-                <div class="card-body">
-                    <div class="d-flex flex-wrap gap-2">
-                        {% for car in years %}
-                        <a href="{% url 'part_search' %}?vehicle={{ car.id }}" 
-                           class="btn btn-outline-dark btn-sm px-3">
-                            {{ car.year }}
-                        </a>
-                        {% endfor %}
-                    </div>
+                <div class="catalog-actions">
+                    <a href="{% url 'part_search' %}" class="btn btn-light btn-sm btn-catalog">العودة إلى البحث</a>
                 </div>
             </div>
         </div>
-        {% endfor %}
+
+        <div class="catalog-stats">
+            <div class="catalog-stat">
+                <div class="catalog-stat-label">Makes</div>
+                <div class="catalog-stat-value">{{ total_makes }}</div>
+            </div>
+            <div class="catalog-stat">
+                <div class="catalog-stat-label">Models</div>
+                <div class="catalog-stat-value">{{ total_models }}</div>
+            </div>
+            <div class="catalog-stat">
+                <div class="catalog-stat-label">إدخالات السنوات</div>
+                <div class="catalog-stat-value">{{ total_year_rows }}</div>
+            </div>
+        </div>
+    </section>
+
+    <section class="catalog-workbench">
+        <div class="catalog-controls-grid">
+            <input id="vehicleFilter" type="search" class="form-control form-control-sm catalog-search" placeholder="Search make, model, or year...">
+
+            <select id="makeFilter" class="form-select form-select-sm catalog-select">
+                <option value="">All makes</option>
+                {% for section in make_sections %}
+                    <option value="{{ section.name|lower }}">{{ section.name }}</option>
+                {% endfor %}
+            </select>
+
+            <select id="modelFilter" class="form-select form-select-sm catalog-select">
+                <option value="">All models</option>
+            </select>
+
+            <select id="yearFilter" class="form-select form-select-sm catalog-select">
+                <option value="">All years</option>
+            </select>
+
+            <button id="expandAllMakesBtn" type="button" class="btn btn-sm btn-catalog btn-catalog-outline">Expand Makes</button>
+            <button id="collapseAllMakesBtn" type="button" class="btn btn-sm btn-catalog btn-catalog-outline">Collapse Makes</button>
+            <button id="clearVehicleFilterBtn" type="button" class="btn btn-sm btn-catalog btn-catalog-outline">Clear</button>
+            <span id="visibleModelsChip" class="catalog-result-chip">0 models</span>
+        </div>
+    </section>
+
+    <div class="catalog-layout">
+        <aside class="make-directory">
+            <div class="make-directory-title">الماركات</div>
+            {% for section in make_sections %}
+                <a class="make-nav-link" href="#make-{{ section.slug }}-{{ forloop.counter }}" data-make-nav>
+                    <span>{{ section.name }}</span>
+                    <span class="make-nav-link-count">{{ section.models_count }}</span>
+                </a>
+            {% endfor %}
+        </aside>
+
+        <section class="catalog-content">
+            <div id="catalogEmptyState" class="empty-state">
+                No vehicles match this search. Try another make/model/year.
+            </div>
+
+            {% for section in make_sections %}
+            <article class="make-panel{% if not forloop.first %} is-collapsed{% endif %}" id="make-{{ section.slug }}-{{ forloop.counter }}" data-make-section data-make="{{ section.name|lower }}">
+                <button class="make-toggle" type="button" data-toggle-make aria-expanded="{% if forloop.first %}true{% else %}false{% endif %}">
+                    <div class="make-panel-main">
+                        <h2 class="make-name">{{ section.name }}</h2>
+                        <p class="make-sub">Models: {{ section.models_count }} | Years: {{ section.years_count }}</p>
+                    </div>
+                    <div class="make-meta">
+                        <span class="meta-pill">{{ section.models_count }} Models</span>
+                        <span class="meta-pill">{{ section.years_count }} Years</span>
+                        <span class="make-chevron">▾</span>
+                    </div>
+                </button>
+
+                <div class="make-panel-body">
+                    <div class="model-list">
+                    {% for model in section.models %}
+                    <article class="model-row is-collapsed"
+                        data-model-card
+                        data-make="{{ section.name|lower }}"
+                        data-model="{{ model.name|lower }}"
+                        data-model-label="{{ model.name }}"
+                        data-years="{% for car in model.years %}{{ car.year }}{% if not forloop.last %},{% endif %}{% endfor %}"
+                        data-search="{{ section.name|lower }} {{ model.name|lower }} {% for car in model.years %}{{ car.year }} {% endfor %}">
+                        <button class="model-toggle" type="button" data-toggle-model aria-expanded="false">
+                            <div class="model-title-wrap">
+                                <h3 class="model-title">{{ model.name }}</h3>
+                            </div>
+                            <div class="model-meta">
+                                <span class="year-count">{{ model.count }}</span>
+                                <span class="model-chevron">▾</span>
+                            </div>
+                        </button>
+                        <div class="year-row">
+                            {% for car in model.years %}
+                                <a href="{% url 'part_search' %}?vehicle={{ car.id }}" class="year-link">{{ car.year }}</a>
+                            {% endfor %}
+                        </div>
+                    </article>
+                    {% endfor %}
+                    </div>
+                </div>
+            </article>
+            {% endfor %}
+        </section>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    const input = document.getElementById('vehicleFilter');
+    const makeFilter = document.getElementById('makeFilter');
+    const modelFilter = document.getElementById('modelFilter');
+    const yearFilter = document.getElementById('yearFilter');
+    const visibleModelsChip = document.getElementById('visibleModelsChip');
+
+    const modelCards = Array.from(document.querySelectorAll('[data-model-card]'));
+    const makeSections = Array.from(document.querySelectorAll('[data-make-section]'));
+    const makeNavLinks = Array.from(document.querySelectorAll('[data-make-nav]'));
+    const makeToggleButtons = Array.from(document.querySelectorAll('[data-toggle-make]'));
+    const modelToggleButtons = Array.from(document.querySelectorAll('[data-toggle-model]'));
+
+    const expandAllBtn = document.getElementById('expandAllMakesBtn');
+    const collapseAllBtn = document.getElementById('collapseAllMakesBtn');
+    const clearBtn = document.getElementById('clearVehicleFilterBtn');
+    const emptyState = document.getElementById('catalogEmptyState');
+
+    if (!input || !makeFilter || !modelFilter || !yearFilter) return;
+
+    function normalize(value) {
+        return String(value || '').toLowerCase().trim();
+    }
+
+    function uniqueSorted(values) {
+        return Array.from(new Set(values.filter(Boolean))).sort((a, b) => a.localeCompare(b));
+    }
+
+    function setSectionCollapsed(section, isCollapsed) {
+        if (!section) return;
+        section.classList.toggle('is-collapsed', Boolean(isCollapsed));
+        const button = section.querySelector('[data-toggle-make]');
+        if (button) button.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+    }
+
+    function setModelCollapsed(card, isCollapsed) {
+        if (!card) return;
+        card.classList.toggle('is-collapsed', Boolean(isCollapsed));
+        const button = card.querySelector('[data-toggle-model]');
+        if (button) button.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+    }
+
+    function updateModelOptions() {
+        const selectedMake = normalize(makeFilter.value);
+        const modelPairs = modelCards
+            .filter((card) => !selectedMake || normalize(card.dataset.make) === selectedMake)
+            .map((card) => ({
+                value: normalize(card.dataset.model),
+                label: String(card.dataset.modelLabel || card.dataset.model || '').trim(),
+            }))
+            .filter((row) => row.value);
+        const modelByValue = new Map();
+        modelPairs.forEach((row) => {
+            if (!modelByValue.has(row.value)) modelByValue.set(row.value, row.label || row.value);
+        });
+        const models = Array.from(modelByValue.keys()).sort((a, b) => a.localeCompare(b));
+
+        const previous = normalize(modelFilter.value);
+        modelFilter.innerHTML = '<option value="">All models</option>';
+        models.forEach((model) => {
+            const option = document.createElement('option');
+            option.value = model;
+            option.textContent = modelByValue.get(model) || model;
+            modelFilter.appendChild(option);
+        });
+        if (previous && models.includes(previous)) modelFilter.value = previous;
+    }
+
+    function updateYearOptions() {
+        const selectedMake = normalize(makeFilter.value);
+        const selectedModel = normalize(modelFilter.value);
+
+        const years = uniqueSorted(
+            modelCards
+                .filter((card) => {
+                    if (selectedMake && normalize(card.dataset.make) !== selectedMake) return false;
+                    if (selectedModel && normalize(card.dataset.model) !== selectedModel) return false;
+                    return true;
+                })
+                .flatMap((card) => String(card.dataset.years || '').split(',').map((year) => year.trim()))
+        );
+
+        const previous = normalize(yearFilter.value);
+        yearFilter.innerHTML = '<option value="">All years</option>';
+        years.forEach((year) => {
+            const option = document.createElement('option');
+            option.value = year;
+            option.textContent = year;
+            yearFilter.appendChild(option);
+        });
+        if (previous && years.includes(previous)) yearFilter.value = previous;
+    }
+
+    function filterCatalog() {
+        const query = normalize(input.value);
+        const selectedMake = normalize(makeFilter.value);
+        const selectedModel = normalize(modelFilter.value);
+        const selectedYear = normalize(yearFilter.value);
+
+        const hasFilter = Boolean(query || selectedMake || selectedModel || selectedYear);
+        let totalVisibleModels = 0;
+
+        modelCards.forEach((card) => {
+            const haystack = normalize(card.getAttribute('data-search'));
+            const cardMake = normalize(card.dataset.make);
+            const cardModel = normalize(card.dataset.model);
+            const cardYears = String(card.dataset.years || '').split(',').map((year) => normalize(year));
+
+            const matchesQuery = !query || haystack.includes(query);
+            const matchesMake = !selectedMake || selectedMake === cardMake;
+            const matchesModel = !selectedModel || selectedModel === cardModel;
+            const matchesYear = !selectedYear || cardYears.includes(selectedYear);
+
+            const visible = matchesQuery && matchesMake && matchesModel && matchesYear;
+            card.style.display = visible ? '' : 'none';
+
+            if (visible) {
+                totalVisibleModels += 1;
+                if (selectedModel && cardModel === selectedModel) {
+                    const parent = card.parentElement;
+                    if (parent) {
+                        Array.from(parent.querySelectorAll('[data-model-card]')).forEach((row) => setModelCollapsed(row, true));
+                    }
+                    setModelCollapsed(card, false);
+                }
+            }
+        });
+
+        makeSections.forEach((section) => {
+            const visibleModels = section.querySelectorAll('[data-model-card]:not([style*="display: none"])').length;
+            const visible = visibleModels > 0;
+            section.style.display = visible ? '' : 'none';
+            if (hasFilter && visible) setSectionCollapsed(section, false);
+        });
+
+        makeNavLinks.forEach((link) => {
+            const targetId = link.getAttribute('href');
+            if (!targetId || !targetId.startsWith('#')) return;
+            const target = document.querySelector(targetId);
+            if (!target) return;
+            link.style.display = target.style.display === 'none' ? 'none' : '';
+        });
+
+        if (emptyState) emptyState.style.display = totalVisibleModels === 0 ? 'block' : 'none';
+        if (visibleModelsChip) {
+            visibleModelsChip.textContent = totalVisibleModels + (totalVisibleModels === 1 ? ' model' : ' models');
+        }
+    }
+
+    makeToggleButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+            const section = button.closest('[data-make-section]');
+            if (!section) return;
+            const collapsed = section.classList.contains('is-collapsed');
+            setSectionCollapsed(section, !collapsed);
+        });
+    });
+
+    modelToggleButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+            const card = button.closest('[data-model-card]');
+            if (!card) return;
+            const collapsed = card.classList.contains('is-collapsed');
+            if (collapsed) {
+                const parent = card.parentElement;
+                if (parent) {
+                    Array.from(parent.querySelectorAll('[data-model-card]')).forEach((row) => {
+                        if (row !== card) setModelCollapsed(row, true);
+                    });
+                }
+                setModelCollapsed(card, false);
+            } else {
+                setModelCollapsed(card, true);
+            }
+        });
+    });
+
+    makeNavLinks.forEach((link) => {
+        link.addEventListener('click', (event) => {
+            const href = link.getAttribute('href');
+            if (!href || !href.startsWith('#')) return;
+            const target = document.querySelector(href);
+            if (!target) return;
+            event.preventDefault();
+            setSectionCollapsed(target, false);
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    });
+
+    if (expandAllBtn) {
+        expandAllBtn.addEventListener('click', () => {
+            makeSections.forEach((section) => setSectionCollapsed(section, false));
+        });
+    }
+
+    if (collapseAllBtn) {
+        collapseAllBtn.addEventListener('click', () => {
+            makeSections.forEach((section) => setSectionCollapsed(section, true));
+        });
+    }
+
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+            input.value = '';
+            makeFilter.value = '';
+            modelFilter.value = '';
+            yearFilter.value = '';
+            updateModelOptions();
+            updateYearOptions();
+            filterCatalog();
+            input.focus();
+        });
+    }
+
+    let timer = null;
+    input.addEventListener('input', () => {
+        if (timer) window.clearTimeout(timer);
+        timer = window.setTimeout(filterCatalog, 140);
+    });
+
+    makeFilter.addEventListener('change', () => {
+        updateModelOptions();
+        updateYearOptions();
+        filterCatalog();
+    });
+
+    modelFilter.addEventListener('change', () => {
+        updateYearOptions();
+        filterCatalog();
+    });
+
+    yearFilter.addEventListener('change', filterCatalog);
+
+    updateModelOptions();
+    updateYearOptions();
+    filterCatalog();
+})();
+</script>
 {% endblock %}

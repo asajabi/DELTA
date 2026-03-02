@@ -1,78 +1,103 @@
-{% extends 'inventory/base.html' %}
+﻿{% extends 'inventory/base.html' %}
 
-{% block title %}New Transfer Request{% endblock %}
+{% block title %}طلب تحويل جديد{% endblock %}
 
 {% block content %}
 <div class="container-fluid px-3 px-lg-4">
-    <div class="row justify-content-center">
-        <div class="col-lg-8">
-            <div class="card delta-card">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <div>
-                            <h1 class="h4 mb-1">New Transfer Request</h1>
-                            <p class="text-muted mb-0">طلب تحويل جديد بين الفروع</p>
-                        </div>
-                        <a href="{% url 'transfer_list' %}" class="btn btn-outline-secondary">Back</a>
+    <div class="delta-page-shell">
+        <section class="delta-hero d-flex flex-wrap align-items-start justify-content-between gap-2">
+            <div>
+                <h1 class="h4 mb-1">طلب تحويل جديد</h1>
+                <p class="text-muted">أنشئ طلب تحويل بين الفروع مع الصنف والكمية والفرع المصدر والوجهة والسائق (اختياري).</p>
+            </div>
+            <div class="delta-action-tabs">
+                <a href="{% url 'transfer_list' %}" class="btn btn-outline-light">العودة إلى التحويلات</a>
+                <a href="{% url 'transfer_approvals' %}" class="btn btn-outline-light">الموافقات</a>
+                <a href="{% url 'transfer_driver_tasks' %}" class="btn btn-outline-light">مهام السائق</a>
+                <a href="{% url 'transfer_receive_list' %}" class="btn btn-outline-light">الاستلام</a>
+            </div>
+        </section>
+
+        <div class="delta-kpi-grid">
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">الأصناف المتاحة</span>
+                <span class="delta-kpi-value">{{ parts|length }}</span>
+            </article>
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">الفروع المتاحة</span>
+                <span class="delta-kpi-value">{{ branches|length }}</span>
+            </article>
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">السائقون</span>
+                <span class="delta-kpi-value">{{ drivers|length }}</span>
+            </article>
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">الفرع المصدر الافتراضي</span>
+                <span class="delta-kpi-value">{{ default_source_branch.name|default:"يحدد بواسطة المدير" }}</span>
+            </article>
+        </div>
+
+        <div class="card delta-accent-card mt-3">
+            <div class="card-header">نموذج طلب التحويل</div>
+            <div class="card-body">
+                <form method="post" class="row g-3">
+                    {% csrf_token %}
+                    <div class="col-md-6">
+                        <label class="form-label">الصنف</label>
+                        <select name="part_id" class="form-select js-part-select" data-part-placeholder="ابحث عن الصنف برقم القطعة أو الاسم" required>
+                            <option value="">اختر الصنف</option>
+                            {% for part in parts %}
+                                <option value="{{ part.id }}">{{ part.part_number }} - {{ part.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">الكمية</label>
+                        <input type="number" name="quantity" min="1" class="form-control" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">السائق (اختياري)</label>
+                        <select name="driver_id" class="form-select">
+                            <option value="">-</option>
+                            {% for driver in drivers %}
+                                <option value="{{ driver.id }}">{{ driver.username }}</option>
+                            {% endfor %}
+                        </select>
                     </div>
 
-                    <form method="post" class="row g-3">
-                        {% csrf_token %}
-                        <div class="col-md-6">
-                            <label class="form-label">Part</label>
-                            <select name="part_id" class="form-select" required>
-                                <option value="">Select part</option>
-                                {% for part in parts %}
-                                    <option value="{{ part.id }}">{{ part.part_number }} - {{ part.name }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Quantity</label>
-                            <input type="number" name="quantity" min="1" class="form-control" required>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Driver (Optional)</label>
-                            <select name="driver_id" class="form-select">
-                                <option value="">-</option>
-                                {% for driver in drivers %}
-                                    <option value="{{ driver.id }}">{{ driver.username }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-
-                        <div class="col-md-6">
-                            <label class="form-label">From Branch</label>
-                            {% if is_admin %}
-                                <select name="from_branch" class="form-select" required>
-                                    <option value="">Select source branch</option>
-                                    {% for branch in branches %}
-                                        <option value="{{ branch.id }}">{{ branch.name }}</option>
-                                    {% endfor %}
-                                </select>
-                            {% else %}
-                                <input type="text" class="form-control" value="{{ default_source_branch.name }}" disabled>
-                            {% endif %}
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">To Branch</label>
-                            <select name="to_branch" class="form-select" required>
-                                <option value="">Select destination branch</option>
+                    <div class="col-md-6">
+                        <label class="form-label">من فرع</label>
+                        {% if is_admin %}
+                            <select name="from_branch" class="form-select" required>
+                                <option value="">اختر الفرع المصدر</option>
                                 {% for branch in branches %}
                                     <option value="{{ branch.id }}">{{ branch.name }}</option>
                                 {% endfor %}
                             </select>
+                        {% else %}
+                            <input type="text" class="form-control" value="{{ default_source_branch.name }}" disabled>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">إلى فرع</label>
+                        <select name="to_branch" class="form-select" required>
+                            <option value="">اختر الفرع الوجهة</option>
+                            {% for branch in branches %}
+                                <option value="{{ branch.id }}">{{ branch.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">ملاحظات</label>
+                        <textarea name="notes" rows="3" class="form-control" placeholder="ملاحظات اختيارية"></textarea>
+                    </div>
+                    <div class="col-12">
+                        <div class="delta-action-tabs">
+                            <button type="submit" class="btn btn-primary">إنشاء الطلب</button>
+                            <a href="{% url 'transfer_list' %}" class="btn btn-outline-secondary">إلغاء</a>
                         </div>
-                        <div class="col-12">
-                            <label class="form-label">Notes</label>
-                            <textarea name="notes" rows="3" class="form-control" placeholder="Optional notes"></textarea>
-                        </div>
-                        <div class="col-12 d-flex gap-2">
-                            <button type="submit" class="btn btn-primary">Create Request</button>
-                            <a href="{% url 'transfer_list' %}" class="btn btn-outline-secondary">Cancel</a>
-                        </div>
-                    </form>
-                </div>
+                    </div>
+                </form>
             </div>
         </div>
     </div>

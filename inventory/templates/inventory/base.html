@@ -93,23 +93,6 @@
             line-height: 1;
         }
 
-        .delta-brand-logo {
-            width: 4.8rem;
-            height: 4.8rem;
-            flex-shrink: 0;
-            object-fit: contain;
-            filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.28));
-        }
-
-        .delta-brand-mark {
-            font-family: "Segoe UI", Tahoma, Arial, sans-serif;
-            font-size: 1.34rem;
-            font-style: italic;
-            font-weight: 700;
-            letter-spacing: 0.15px;
-            color: #e9f2ff;
-        }
-
         .delta-brand-name {
             font-family: "Tajawal", sans-serif;
             font-size: 1.26rem;
@@ -176,6 +159,72 @@
             background: linear-gradient(180deg, rgba(38, 141, 230, 0.34), rgba(27, 108, 177, 0.3));
             border-color: rgba(127, 193, 255, 0.45);
             box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        }
+
+        .delta-nav-group {
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            border-radius: 0.7rem;
+            background: rgba(255, 255, 255, 0.03);
+            overflow: hidden;
+        }
+
+        .delta-nav-group-toggle {
+            width: 100%;
+            border: 0;
+            background: transparent;
+            color: #f4f8ff;
+            text-align: start;
+            font-weight: 700;
+            font-size: 0.92rem;
+            padding: 0.58rem 0.76rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.5rem;
+            transition: background 0.16s ease;
+        }
+
+        .delta-nav-group-toggle:hover,
+        .delta-nav-group-toggle:focus {
+            background: rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+        }
+
+        .delta-nav-group-toggle::after {
+            content: "\f078";
+            font-family: "Font Awesome 6 Free";
+            font-weight: 900;
+            font-size: 0.72rem;
+            opacity: 0.84;
+            transition: transform 0.16s ease;
+        }
+
+        .delta-nav-group.open .delta-nav-group-toggle::after {
+            transform: rotate(180deg);
+        }
+
+        .delta-nav-submenu {
+            list-style: none;
+            margin: 0;
+            padding: 0 0.4rem;
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+            border-top: 1px solid transparent;
+            background: rgba(5, 20, 34, 0.35);
+            transition: max-height 0.26s ease, opacity 0.2s ease, padding 0.2s ease, border-color 0.2s ease;
+        }
+
+        .delta-nav-group.open .delta-nav-submenu {
+            max-height: 28rem;
+            opacity: 1;
+            padding: 0.4rem;
+            border-top-color: rgba(255, 255, 255, 0.13);
+        }
+
+        .delta-nav-submenu .delta-nav-link {
+            font-size: 0.9rem;
+            padding-block: 0.48rem;
         }
 
         .barcode-scanner-modal .modal-content {
@@ -676,15 +725,6 @@
                 gap: 0.34rem;
             }
 
-            .delta-brand-logo {
-                width: 3.6rem;
-                height: 3.6rem;
-            }
-
-            .delta-brand-mark {
-                font-size: 1.12rem;
-            }
-
             .delta-brand-name {
                 font-size: 1.02rem;
             }
@@ -767,15 +807,6 @@
                 gap: 0.26rem;
             }
 
-            .delta-brand-logo {
-                width: 3rem;
-                height: 3rem;
-            }
-
-            .delta-brand-mark {
-                font-size: 0.98rem;
-            }
-
             .delta-brand-name {
                 font-size: 0.9rem;
             }
@@ -817,8 +848,6 @@
     <div class="container-fluid px-3 px-lg-4">
         <div class="d-flex align-items-center gap-2">
             <a class="navbar-brand mb-0" href="{% url 'part_search' %}">
-                <img src="{% static 'inventory/images/logo.png' %}" alt="DBP Logo" class="delta-brand-logo">
-                <span class="delta-brand-mark">DBP</span>
                 <span class="delta-brand-name">دلتا لنقطة البيع</span>
             </a>
             {% if user.is_authenticated %}
@@ -877,61 +906,99 @@
         </div>
         <div class="offcanvas-body">
             {% with current_url=request.resolver_match.url_name %}
-                <ul class="nav flex-column gap-1">
+                <ul class="nav flex-column gap-2">
                     <li class="nav-item">
                         <a class="nav-link delta-nav-link {% if current_url == 'part_search' %}active{% endif %}" href="{% url 'part_search' %}" {% if current_url == 'part_search' %}aria-current="page"{% endif %}>البحث</a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link delta-nav-link {% if current_url == 'pos_console' or current_url == 'cart_view' %}active{% endif %}" href="{% url 'pos_console' %}" {% if current_url == 'pos_console' or current_url == 'cart_view' %}aria-current="page"{% endif %}>نقطة البيع</a>
+
+                    <li class="delta-nav-group">
+                        <button type="button" class="delta-nav-group-toggle" data-delta-group-toggle aria-expanded="false">١) عام وأولوية عالية</button>
+                        <ul class="delta-nav-submenu">
+                            {% if nav_is_manager %}
+                                <li class="nav-item">
+                                    <a class="nav-link delta-nav-link {% if current_url == 'low_stock_list' %}active{% endif %}" href="{% url 'low_stock_list' %}" {% if current_url == 'low_stock_list' %}aria-current="page"{% endif %}>
+                                        تنبيه المخزون
+                                        {% if nav_low_stock_count %}
+                                            <span class="badge text-bg-danger">{{ nav_low_stock_count }}</span>
+                                        {% endif %}
+                                    </a>
+                                </li>
+                            {% endif %}
+                            <li class="nav-item">
+                                <a class="nav-link delta-nav-link {% if current_url == 'analytics_assistant' or current_url == 'chat_assistant' %}active{% endif %}" href="{% url 'analytics_assistant' %}" {% if current_url == 'analytics_assistant' or current_url == 'chat_assistant' %}aria-current="page"{% endif %}>المساعد الذكي</a>
+                            </li>
+                        </ul>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link delta-nav-link {% if current_url == 'order_list' or current_url == 'receipt_view' %}active{% endif %}" href="{% url 'order_list' %}" {% if current_url == 'order_list' or current_url == 'receipt_view' %}aria-current="page"{% endif %}>الطلبات</a>
+
+                    <li class="delta-nav-group">
+                        <button type="button" class="delta-nav-group-toggle" data-delta-group-toggle aria-expanded="false">٢) المبيعات والواجهة</button>
+                        <ul class="delta-nav-submenu">
+                            <li class="nav-item">
+                                <a class="nav-link delta-nav-link {% if current_url == 'pos_console' or current_url == 'cart_view' %}active{% endif %}" href="{% url 'pos_console' %}" {% if current_url == 'pos_console' or current_url == 'cart_view' %}aria-current="page"{% endif %}>نقطة البيع</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link delta-nav-link {% if current_url == 'order_list' or current_url == 'receipt_view' %}active{% endif %}" href="{% url 'order_list' %}" {% if current_url == 'order_list' or current_url == 'receipt_view' %}aria-current="page"{% endif %}>الطلبات</a>
+                            </li>
+                        </ul>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link delta-nav-link {% if current_url == 'transfer_list' or current_url == 'transfer_create_from_stock' or current_url == 'transfer_approvals' or current_url == 'transfer_driver_tasks' or current_url == 'transfer_receive_list' %}active{% endif %}" href="{% url 'transfer_list' %}" {% if current_url == 'transfer_list' or current_url == 'transfer_create_from_stock' or current_url == 'transfer_approvals' or current_url == 'transfer_driver_tasks' or current_url == 'transfer_receive_list' %}aria-current="page"{% endif %}>التحويلات</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link delta-nav-link {% if current_url == 'ticket_list' or current_url == 'ticket_create' or current_url == 'ticket_detail' %}active{% endif %}" href="{% url 'ticket_list' %}" {% if current_url == 'ticket_list' or current_url == 'ticket_create' or current_url == 'ticket_detail' %}aria-current="page"{% endif %}>الدعم الفني</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link delta-nav-link {% if current_url == 'analytics_assistant' or current_url == 'chat_assistant' %}active{% endif %}" href="{% url 'analytics_assistant' %}" {% if current_url == 'analytics_assistant' or current_url == 'chat_assistant' %}aria-current="page"{% endif %}>المساعد الذكي</a>
-                    </li>
+
                     {% if nav_is_manager %}
-                        <li class="nav-item">
-                            <a class="nav-link delta-nav-link {% if current_url == 'vendor_list' or current_url == 'vendor_create' or current_url == 'vendor_detail' or current_url == 'vendor_edit' %}active{% endif %}" href="{% url 'vendor_list' %}" {% if current_url == 'vendor_list' or current_url == 'vendor_create' or current_url == 'vendor_detail' or current_url == 'vendor_edit' %}aria-current="page"{% endif %}>الموردون</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link delta-nav-link {% if current_url == 'purchase_order_list' or current_url == 'purchase_order_create' or current_url == 'purchase_order_detail' %}active{% endif %}" href="{% url 'purchase_order_list' %}" {% if current_url == 'purchase_order_list' or current_url == 'purchase_order_create' or current_url == 'purchase_order_detail' %}aria-current="page"{% endif %}>أوامر الشراء</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link delta-nav-link {% if current_url == 'purchase_receipt_list' or current_url == 'purchase_receipt_detail' %}active{% endif %}" href="{% url 'purchase_receipt_list' %}" {% if current_url == 'purchase_receipt_list' or current_url == 'purchase_receipt_detail' %}aria-current="page"{% endif %}>الاستلام</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link delta-nav-link {% if current_url == 'cycle_count_list' or current_url == 'cycle_count_detail' %}active{% endif %}" href="{% url 'cycle_count_list' %}" {% if current_url == 'cycle_count_list' or current_url == 'cycle_count_detail' %}aria-current="page"{% endif %}>الجرد الدوري</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link delta-nav-link {% if current_url == 'reports_dashboard' or current_url == 'sales_history' %}active{% endif %}" href="{% url 'reports_dashboard' %}" {% if current_url == 'reports_dashboard' or current_url == 'sales_history' %}aria-current="page"{% endif %}>التقارير</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link delta-nav-link {% if current_url == 'low_stock_list' %}active{% endif %}" href="{% url 'low_stock_list' %}" {% if current_url == 'low_stock_list' %}aria-current="page"{% endif %}>
-                                تنبيه المخزون
-                                {% if nav_low_stock_count %}
-                                    <span class="badge text-bg-danger">{{ nav_low_stock_count }}</span>
-                                {% endif %}
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link delta-nav-link {% if current_url == 'location_list' %}active{% endif %}" href="{% url 'location_list' %}" {% if current_url == 'location_list' %}aria-current="page"{% endif %}>المواقع</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link delta-nav-link {% if current_url == 'stock_locations_view' or current_url == 'stock_by_location' %}active{% endif %}" href="{% url 'stock_locations_view' %}" {% if current_url == 'stock_locations_view' or current_url == 'stock_by_location' %}aria-current="page"{% endif %}>المخزون حسب الموقع</a>
+                        <li class="delta-nav-group">
+                            <button type="button" class="delta-nav-group-toggle" data-delta-group-toggle aria-expanded="false">٣) المشتريات (الوارد)</button>
+                            <ul class="delta-nav-submenu">
+                                <li class="nav-item">
+                                    <a class="nav-link delta-nav-link {% if current_url == 'vendor_list' or current_url == 'vendor_create' or current_url == 'vendor_detail' or current_url == 'vendor_edit' %}active{% endif %}" href="{% url 'vendor_list' %}" {% if current_url == 'vendor_list' or current_url == 'vendor_create' or current_url == 'vendor_detail' or current_url == 'vendor_edit' %}aria-current="page"{% endif %}>الموردون</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link delta-nav-link {% if current_url == 'purchase_order_list' or current_url == 'purchase_order_create' or current_url == 'purchase_order_detail' %}active{% endif %}" href="{% url 'purchase_order_list' %}" {% if current_url == 'purchase_order_list' or current_url == 'purchase_order_create' or current_url == 'purchase_order_detail' %}aria-current="page"{% endif %}>أوامر الشراء</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link delta-nav-link {% if current_url == 'purchase_receipt_list' or current_url == 'purchase_receipt_detail' %}active{% endif %}" href="{% url 'purchase_receipt_list' %}" {% if current_url == 'purchase_receipt_list' or current_url == 'purchase_receipt_detail' %}aria-current="page"{% endif %}>الاستلام</a>
+                                </li>
+                            </ul>
                         </li>
                     {% endif %}
-                    {% if nav_is_admin %}
-                        <li class="nav-item">
-                            <a class="nav-link delta-nav-link {% if current_url == 'audit_log_list' %}active{% endif %}" href="{% url 'audit_log_list' %}" {% if current_url == 'audit_log_list' %}aria-current="page"{% endif %}>سجل التدقيق</a>
-                        </li>
-                    {% endif %}
+
+                    <li class="delta-nav-group">
+                        <button type="button" class="delta-nav-group-toggle" data-delta-group-toggle aria-expanded="false">٤) إدارة المخزون الداخلية</button>
+                        <ul class="delta-nav-submenu">
+                            {% if nav_is_manager %}
+                                <li class="nav-item">
+                                    <a class="nav-link delta-nav-link {% if current_url == 'stock_locations_view' or current_url == 'stock_by_location' %}active{% endif %}" href="{% url 'stock_locations_view' %}" {% if current_url == 'stock_locations_view' or current_url == 'stock_by_location' %}aria-current="page"{% endif %}>المخزون حسب الموقع</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link delta-nav-link {% if current_url == 'location_list' %}active{% endif %}" href="{% url 'location_list' %}" {% if current_url == 'location_list' %}aria-current="page"{% endif %}>المواقع</a>
+                                </li>
+                            {% endif %}
+                            <li class="nav-item">
+                                <a class="nav-link delta-nav-link {% if current_url == 'transfer_list' or current_url == 'transfer_create_from_stock' or current_url == 'transfer_approvals' or current_url == 'transfer_driver_tasks' or current_url == 'transfer_receive_list' %}active{% endif %}" href="{% url 'transfer_list' %}" {% if current_url == 'transfer_list' or current_url == 'transfer_create_from_stock' or current_url == 'transfer_approvals' or current_url == 'transfer_driver_tasks' or current_url == 'transfer_receive_list' %}aria-current="page"{% endif %}>التحويلات</a>
+                            </li>
+                            {% if nav_is_manager %}
+                                <li class="nav-item">
+                                    <a class="nav-link delta-nav-link {% if current_url == 'cycle_count_list' or current_url == 'cycle_count_detail' %}active{% endif %}" href="{% url 'cycle_count_list' %}" {% if current_url == 'cycle_count_list' or current_url == 'cycle_count_detail' %}aria-current="page"{% endif %}>الجرد الدوري</a>
+                                </li>
+                            {% endif %}
+                        </ul>
+                    </li>
+
+                    <li class="delta-nav-group">
+                        <button type="button" class="delta-nav-group-toggle" data-delta-group-toggle aria-expanded="false">٥) الإدارة والدعم</button>
+                        <ul class="delta-nav-submenu">
+                            {% if nav_is_manager %}
+                                <li class="nav-item">
+                                    <a class="nav-link delta-nav-link {% if current_url == 'reports_dashboard' or current_url == 'sales_history' %}active{% endif %}" href="{% url 'reports_dashboard' %}" {% if current_url == 'reports_dashboard' or current_url == 'sales_history' %}aria-current="page"{% endif %}>التقارير</a>
+                                </li>
+                            {% endif %}
+                            {% if nav_is_admin %}
+                                <li class="nav-item">
+                                    <a class="nav-link delta-nav-link {% if current_url == 'audit_log_list' %}active{% endif %}" href="{% url 'audit_log_list' %}" {% if current_url == 'audit_log_list' %}aria-current="page"{% endif %}>سجل التدقيق</a>
+                                </li>
+                            {% endif %}
+                            <li class="nav-item">
+                                <a class="nav-link delta-nav-link {% if current_url == 'ticket_list' or current_url == 'ticket_create' or current_url == 'ticket_detail' %}active{% endif %}" href="{% url 'ticket_list' %}" {% if current_url == 'ticket_list' or current_url == 'ticket_create' or current_url == 'ticket_detail' %}aria-current="page"{% endif %}>الدعم الفني</a>
+                            </li>
+                        </ul>
+                    </li>
                 </ul>
             {% endwith %}
         </div>
@@ -1057,6 +1124,46 @@
         }
     });
 
+    function closeAllGroups() {
+        panelElement.querySelectorAll('.delta-nav-group.open').forEach(function (group) {
+            group.classList.remove('open');
+            const toggle = group.querySelector('[data-delta-group-toggle]');
+            if (toggle) {
+                toggle.setAttribute('aria-expanded', 'false');
+            }
+        });
+    }
+
+    function openActiveGroup() {
+        const activeLink = panelElement.querySelector('.delta-nav-submenu .delta-nav-link.active');
+        if (!activeLink) return;
+        const group = activeLink.closest('.delta-nav-group');
+        if (!group) return;
+        group.classList.add('open');
+        const toggle = group.querySelector('[data-delta-group-toggle]');
+        if (toggle) {
+            toggle.setAttribute('aria-expanded', 'true');
+        }
+    }
+
+    panelElement.querySelectorAll('[data-delta-group-toggle]').forEach(function (toggle) {
+        toggle.addEventListener('click', function (event) {
+            event.preventDefault();
+            const group = toggle.closest('.delta-nav-group');
+            if (!group) return;
+            const willOpen = !group.classList.contains('open');
+            closeAllGroups();
+            if (willOpen) {
+                group.classList.add('open');
+                toggle.setAttribute('aria-expanded', 'true');
+            } else {
+                toggle.setAttribute('aria-expanded', 'false');
+            }
+        });
+    });
+
+    openActiveGroup();
+
     panelElement.querySelectorAll('a.nav-link[href]').forEach(function (link) {
         link.addEventListener('click', function () {
             if (offcanvas) {
@@ -1083,6 +1190,8 @@
             toggleButton.setAttribute('aria-expanded', 'false');
             fallbackBackdrop.classList.remove('show');
             document.body.style.overflow = '';
+            closeAllGroups();
+            openActiveGroup();
         });
     }
 })();

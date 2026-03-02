@@ -1,0 +1,129 @@
+﻿{% extends "inventory/base.html" %}
+
+{% block title %}أمر الشراء {{ po.po_number }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 px-lg-4">
+    <div class="delta-page-shell">
+        <section class="delta-hero d-flex flex-wrap align-items-start justify-content-between gap-2">
+            <div>
+                <h1 class="h4 mb-1">{{ po.po_number }}</h1>
+                <p class="text-muted">{{ po.vendor }} | {{ po.branch.name }} | {{ po.get_status_display }}</p>
+            </div>
+            <div class="page-actions">
+                <a href="{% url 'purchase_order_list' %}" class="btn btn-outline-secondary">رجوع</a>
+                <form method="post" action="{% url 'purchase_receipt_create' po.id %}" class="d-inline">
+                    {% csrf_token %}
+                    <button class="btn btn-primary" type="submit"><i class="fa-solid fa-truck-ramp-box me-1"></i> استلام جديد (GRN)</button>
+                </form>
+            </div>
+        </section>
+
+        <div class="delta-kpi-grid">
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">الحالة</span>
+                <span class="delta-kpi-value">{{ po.get_status_display }}</span>
+            </article>
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">عدد البنود</span>
+                <span class="delta-kpi-value">{{ lines|length }}</span>
+            </article>
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">التاريخ المتوقع</span>
+                <span class="delta-kpi-value">{{ po.expected_date|default:"-" }}</span>
+            </article>
+        </div>
+
+        <div class="card delta-accent-card delta-table-panel mt-3">
+            <div class="card-header">بنود الأمر</div>
+            <div class="card-body table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>الصنف</th>
+                            <th>الكمية المطلوبة</th>
+                            <th>الكمية المستلمة</th>
+                            <th>المتبقي</th>
+                            <th>تكلفة الوحدة</th>
+                            <th>الضريبة</th>
+                            <th>الخصم</th>
+                            <th>إجمالي البند</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for line in lines %}
+                        <tr>
+                            <td><strong>{{ line.part.part_number }}</strong> - {{ line.part.name }}</td>
+                            <td>{{ line.qty_ordered }}</td>
+                            <td>{{ line.qty_received }}</td>
+                            <td><span class="delta-chip">{{ line.remaining_qty }}</span></td>
+                            <td>{{ line.unit_cost }}</td>
+                            <td>{{ line.tax_rate }}%</td>
+                            <td>{{ line.discount }}</td>
+                            <td>{{ line.line_total }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="8" class="py-4"><div class="delta-empty">لا توجد بنود.</div></td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card delta-accent-card mt-3">
+            <div class="card-header">سجلات الاستلام</div>
+            <div class="card-body">
+                <ul class="delta-list-clean">
+                    {% for r in po.receipts.all %}
+                        <li>
+                            <span><a href="{% url 'purchase_receipt_detail' r.id %}"><strong>GRN-{{ r.id }}</strong></a> - {{ r.get_status_display }}</span>
+                            <span class="text-muted">{{ r.received_at|date:"Y-m-d H:i" }}</span>
+                        </li>
+                    {% empty %}
+                        <li><span class="text-muted">لا توجد عمليات استلام بعد.</span></li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+        {% if not po.is_closed %}
+        <div class="card delta-accent-card mt-3">
+            <div class="card-header">إضافة بند</div>
+            <div class="card-body">
+                <form method="post" class="delta-inline-form">
+                    {% csrf_token %}
+                    <div>
+                        <label class="form-label">الصنف</label>
+                        <select name="part_id" class="form-select js-part-select" data-part-placeholder="ابحث عن الصنف برقم القطعة أو الاسم" required>
+                            <option value="">اختر الصنف</option>
+                            {% for p in parts %}
+                                <option value="{{ p.id }}">{{ p.part_number }} - {{ p.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label">الكمية</label>
+                        <input type="number" min="1" name="qty_ordered" class="form-control" required>
+                    </div>
+                    <div>
+                        <label class="form-label">تكلفة الوحدة</label>
+                        <input type="number" min="0" step="0.0001" name="unit_cost" class="form-control" required>
+                    </div>
+                    <div>
+                        <label class="form-label">الضريبة %</label>
+                        <input type="number" min="0" step="0.01" name="tax_rate" class="form-control" value="15.00">
+                    </div>
+                    <div>
+                        <label class="form-label">الخصم</label>
+                        <input type="number" min="0" step="0.01" name="discount" class="form-control" value="0.00">
+                    </div>
+                    <div class="d-grid">
+                        <button class="btn btn-primary" type="submit"><i class="fa-solid fa-plus me-1"></i> إضافة</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

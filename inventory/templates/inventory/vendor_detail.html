@@ -1,0 +1,67 @@
+﻿{% extends "inventory/base.html" %}
+
+{% block title %}تفاصيل المورد{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 px-lg-4">
+    <div class="delta-page-shell">
+        <section class="delta-hero d-flex flex-wrap align-items-start justify-content-between gap-2">
+            <div>
+                <h1 class="h4 mb-1">{{ vendor.name_ar|default:vendor.name_en }}</h1>
+                <p class="text-muted">الكود: {{ vendor.vendor_code }}{% if vendor.name_en %} | {{ vendor.name_en }}{% endif %}</p>
+            </div>
+            <div class="page-actions">
+                <a href="{% url 'vendor_edit' vendor.id %}" class="btn btn-primary"><i class="fa-solid fa-pen-to-square me-1"></i> تعديل</a>
+                <a href="{% url 'vendor_list' %}" class="btn btn-outline-secondary">رجوع</a>
+            </div>
+        </section>
+
+        <div class="delta-kpi-grid">
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">الحالة</span>
+                <span class="delta-kpi-value">{% if vendor.is_active %}نشط{% else %}غير نشط{% endif %}</span>
+            </article>
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">عدد أوامر الشراء</span>
+                <span class="delta-kpi-value">{{ po_count }}</span>
+            </article>
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">الهاتف</span>
+                <span class="delta-kpi-value">{{ vendor.phone|default:"-" }}</span>
+            </article>
+        </div>
+
+        <div class="row g-3 mt-1">
+            <div class="col-lg-6">
+                <div class="card delta-accent-card h-100">
+                    <div class="card-header">الهوية التجارية</div>
+                    <div class="card-body">
+                        <ul class="delta-list-clean">
+                            <li><span>الاسم العربي</span><strong>{{ vendor.name_ar|default:"-" }}</strong></li>
+                            <li><span>الاسم الإنجليزي</span><strong>{{ vendor.name_en|default:"-" }}</strong></li>
+                            <li><span>الرقم الضريبي</span><strong>{{ vendor.vat_number|default:"-" }}</strong></li>
+                            <li><span>رقم السجل التجاري</span><strong>{{ vendor.cr_number|default:"-" }}</strong></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card delta-accent-card h-100">
+                    <div class="card-header">بيانات التواصل</div>
+                    <div class="card-body">
+                        <ul class="delta-list-clean">
+                            <li><span>البريد الإلكتروني</span><strong>{{ vendor.email|default:"-" }}</strong></li>
+                            <li><span>الهاتف</span><strong>{{ vendor.phone|default:"-" }}</strong></li>
+                            <li><span>العنوان</span><strong>{{ vendor.address|default:"-" }}</strong></li>
+                        </ul>
+                        <div class="delta-soft-panel mt-3">
+                            <div class="small text-muted mb-1">ملاحظات</div>
+                            <div>{{ vendor.notes|default:"-" }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

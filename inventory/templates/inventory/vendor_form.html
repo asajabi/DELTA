@@ -1,0 +1,73 @@
+﻿{% extends "inventory/base.html" %}
+
+{% block title %}{% if vendor %}تعديل مورد{% else %}مورد جديد{% endif %}{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 px-lg-4">
+    <div class="delta-page-shell">
+        <section class="delta-hero d-flex flex-wrap align-items-start justify-content-between gap-2">
+            <div>
+                <h1 class="h4 mb-1">{% if vendor %}تعديل مورد{% else %}مورد جديد{% endif %}</h1>
+                <p class="text-muted">حافظ على دقة بيانات المورد لضمان استلام ومحاسبة سليمة.</p>
+            </div>
+            <div class="page-actions">
+                <a href="{% url 'vendor_list' %}" class="btn btn-outline-secondary"><i class="fa-solid fa-arrow-left me-1"></i> رجوع</a>
+            </div>
+        </section>
+
+        <div class="card delta-accent-card">
+            <div class="card-header">بيانات المورد</div>
+            <div class="card-body">
+                <form method="post" class="row g-3">
+                    {% csrf_token %}
+                    <div class="col-md-3">
+                        <label class="form-label">كود المورد</label>
+                        <input type="text" name="vendor_code" class="form-control" value="{{ vendor.vendor_code|default:'' }}" placeholder="VND-XXXX">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">الاسم العربي</label>
+                        <input type="text" name="name_ar" class="form-control" value="{{ vendor.name_ar|default:'' }}">
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label">الاسم الإنجليزي</label>
+                        <input type="text" name="name_en" class="form-control" value="{{ vendor.name_en|default:'' }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">الهاتف</label>
+                        <input type="text" name="phone" class="form-control" value="{{ vendor.phone|default:'' }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">البريد الإلكتروني</label>
+                        <input type="email" name="email" class="form-control" value="{{ vendor.email|default:'' }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">العنوان</label>
+                        <input type="text" name="address" class="form-control" value="{{ vendor.address|default:'' }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">الرقم الضريبي</label>
+                        <input type="text" name="vat_number" class="form-control" value="{{ vendor.vat_number|default:'' }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">رقم السجل التجاري</label>
+                        <input type="text" name="cr_number" class="form-control" value="{{ vendor.cr_number|default:'' }}">
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="is_active" id="is_active" {% if not vendor or vendor.is_active %}checked{% endif %}>
+                            <label class="form-check-label" for="is_active">نشط</label>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">ملاحظات</label>
+                        <textarea name="notes" class="form-control" rows="3">{{ vendor.notes|default:'' }}</textarea>
+                    </div>
+                    <div class="col-12 d-flex justify-content-end">
+                        <button class="btn btn-primary" type="submit"><i class="fa-solid fa-floppy-disk me-1"></i> حفظ المورد</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

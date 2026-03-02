@@ -1,0 +1,70 @@
+﻿{% extends "inventory/base.html" %}
+
+{% block title %}ربط باركود{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 px-lg-4">
+    <div class="delta-page-shell">
+        <section class="delta-hero d-flex flex-wrap align-items-start justify-content-between gap-2">
+            <div>
+                <h1 class="h4 mb-1">ربط باركود غير معروف</h1>
+                <p class="text-muted">اربط الباركودات غير المعروفة بالأصناف الحالية بدون تعطيل عملية البيع.</p>
+            </div>
+            <div class="page-actions">
+                <a href="{% url 'part_search' %}" class="btn btn-outline-secondary">العودة إلى البحث</a>
+            </div>
+        </section>
+
+        <div class="delta-kpi-grid">
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">الرمز الممسوح</span>
+                <span class="delta-kpi-value">{{ scan_code|default:"-" }}</span>
+            </article>
+            <article class="delta-kpi">
+                <span class="delta-kpi-label">الأصناف المتاحة</span>
+                <span class="delta-kpi-value">{{ parts|length }}</span>
+            </article>
+        </div>
+
+        <div class="card delta-accent-card mt-3">
+            <div class="card-header">نموذج ربط الباركود</div>
+            <div class="card-body">
+                <form method="post" class="delta-inline-form">
+                    {% csrf_token %}
+                    <div>
+                        <label class="form-label">الباركود الممسوح</label>
+                        <input type="text" name="scan_code" class="form-control" value="{{ scan_code }}" required>
+                    </div>
+                    <div>
+                        <label class="form-label">الصنف</label>
+                        <select name="part_id" class="form-select js-part-select" data-part-placeholder="ابحث عن الصنف برقم القطعة أو الاسم" required>
+                            <option value="">اختر الصنف</option>
+                            {% for p in parts %}
+                                <option value="{{ p.id }}">{{ p.part_number }} - {{ p.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label">ملاحظة</label>
+                        <input type="text" name="note" class="form-control" placeholder="ملاحظة اختيارية">
+                    </div>
+                    <div class="d-grid">
+                        <button class="btn btn-primary" type="submit"><i class="fa-solid fa-link me-1"></i> ربط الباركود</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card delta-accent-card mt-3">
+            <div class="card-header">ملاحظات</div>
+            <div class="card-body">
+                <ul class="mb-0">
+                    <li>استخدم هذه الصفحة فقط عند فشل العثور على الصنف عبر المسح.</li>
+                    <li>أي تعارض مع باركود مرتبط مسبقًا يتم منعه تلقائيًا.</li>
+                    <li>كل عملية ربط ناجحة تُسجل في سجل التدقيق.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

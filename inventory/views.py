@@ -1,26 +1,38 @@
-﻿import csv
+import csv
+import json
+import logging
 import re
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from functools import wraps
 from urllib.parse import urlencode
 
+from django.conf import settings
 from django.contrib import messages
+from django.contrib.auth import password_validation
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
+from django.core.mail import send_mail
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
 from django.db.models import Case, Count, DecimalField, ExpressionWrapper, F, IntegerField, Prefetch, Q, Sum, Value, When
 from django.db.models.functions import Coalesce, TruncDate
-from django.http import HttpResponse, HttpResponseForbidden, JsonResponse, StreamingHttpResponse
+from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseForbidden, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
+from .assistant_llm import (
+    AssistantLLMError,
+    assistant_llm_enabled,
+    assistant_llm_engine_label,
+    generate_assistant_plan,
+)
 from .audit import log_audit_event
 from .chat_assistant import (
     WRITE_ACTIONS,
@@ -38,26 +50,52 @@ from .chat_assistant import (
     user_role,
     validate_tool_permission,
 )
+from .invoicing import (
+    amount_to_words_ar,
+    build_invoice_template_context,
+    create_posted_invoice_from_order,
+    render_invoice_pdf_bytes,
+)
 from .models import (
     AuditLog,
     Branch,
+    CreditNote,
+    CreditNoteLine,
+    CustomerLedgerEntry,
+    CycleCountLine,
+    CycleCountSession,
     Customer,
     Location,
     Order,
+    PartBarcode,
+    PartBranchCost,
     Part,
+    Payment,
+    PasswordResetOtp,
+    PurchaseOrder,
+    PurchaseOrderLine,
+    PurchaseReceipt,
+    PurchaseReceiptLine,
     Sale,
+    SmaccSyncLog,
+    SmaccSyncQueue,
     Stock,
     StockLocation,
     StockMovement,
+    TaxInvoice,
     Ticket,
     TransferRequest,
     UserProfile,
+    Vendor,
     Vehicle,
     add_stock_to_location,
     ensure_stock_locations_seeded_from_branch_stock,
     move_stock_between_locations,
     remove_stock_from_locations,
+    sync_stock_total_from_locations,
+    update_branch_average_cost,
 )
+from .smacc_client import SmaccClient
 
 VAT_RATE = Decimal("0.15")
 CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
@@ -70,6 +108,13 @@ SCAN_REPEAT_GUARD_SESSION_KEY = "scan_repeat_guard"
 POS_SCAN_UNDO_SESSION_KEY = "pos_scan_undo"
 POS_SCAN_REPEAT_GUARD_SESSION_KEY = "pos_scan_repeat_guard"
 SCAN_REPEAT_WINDOW_SECONDS = 3
+SMACC_SYNC_EVENT_TYPES = {"document.created", "document.updated", "accountingRecord.updated"}
+PASSWORD_RESET_OTP_SESSION_KEY = "password_reset_otp_id"
+PASSWORD_RESET_VERIFIED_SESSION_KEY = "password_reset_verified_otp_id"
+PASSWORD_RESET_REQUEST_LIMIT_PER_HOUR = 5
+PASSWORD_RESET_MAX_VERIFY_ATTEMPTS = 5
+
+logger = logging.getLogger("inventory")
 
 
 def _quantize_money(value: Decimal) -> Decimal:
@@ -92,6 +137,244 @@ def _safe_next_url(request, fallback_name: str) -> str:
     if next_url and url_has_allowed_host_and_scheme(next_url, {request.get_host()}, require_https=request.is_secure()):
         return next_url
     return reverse(fallback_name)
+
+
+def _request_ip(request) -> str | None:
+    forwarded_for = (request.META.get("HTTP_X_FORWARDED_FOR") or "").strip()
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    remote_addr = (request.META.get("REMOTE_ADDR") or "").strip()
+    return remote_addr or None
+
+
+def _normalize_phone(value: str) -> str:
+    digits = re.sub(r"\D", "", value or "")
+    if digits.startswith("966") and len(digits) >= 12:
+        digits = "0" + digits[3:]
+    return digits
+
+
+def _phone_variants(value: str) -> set[str]:
+    normalized = _normalize_phone(value)
+    if not normalized:
+        return set()
+    variants = {normalized}
+    variants.add(normalized.lstrip("0"))
+    if normalized.startswith("0"):
+        variants.add(f"966{normalized[1:]}")
+    return {v for v in variants if v}
+
+
+def _mask_contact(channel: str, contact: str) -> str:
+    if channel == PasswordResetOtp.Channels.EMAIL:
+        local, _, domain = (contact or "").partition("@")
+        if not domain:
+            return "***"
+        masked_local = f"{local[:2]}***" if local else "***"
+        return f"{masked_local}@{domain}"
+    phone = _normalize_phone(contact)
+    if len(phone) <= 4:
+        return "***"
+    return f"{phone[:3]}***{phone[-2:]}"
+
+
+def _matches_recovery_contact(user: User, channel: str, contact: str) -> bool:
+    if channel == PasswordResetOtp.Channels.EMAIL:
+        user_email = (user.email or "").strip().casefold()
+        contact_email = (contact or "").strip().casefold()
+        return bool(user_email and contact_email and user_email == contact_email)
+
+    if channel == PasswordResetOtp.Channels.PHONE:
+        profile = getattr(user, "profile", None)
+        profile_phone = (getattr(profile, "phone_number", "") or "").strip()
+        if not profile_phone:
+            return False
+        return bool(_phone_variants(profile_phone).intersection(_phone_variants(contact)))
+
+    return False
+
+
+def _dispatch_password_reset_otp(otp: PasswordResetOtp, raw_code: str) -> tuple[bool, str | None]:
+    if otp.channel == PasswordResetOtp.Channels.EMAIL:
+        subject = "DELTA POS - Password Reset Code"
+        body = (
+            f"Your DELTA POS password reset code is: {raw_code}\n\n"
+            "This code expires in 15 minutes.\n"
+            "If you did not request this, contact your administrator."
+        )
+        sender = getattr(settings, "DEFAULT_FROM_EMAIL", "no-reply@delta.local")
+        try:
+            send_mail(subject, body, sender, [otp.destination], fail_silently=False)
+            return True, None
+        except Exception:
+            logger.exception("Password reset email send failed for user=%s", otp.user_id)
+            if settings.DEBUG:
+                logger.warning("Password reset email fallback used (DEBUG). user=%s code=%s", otp.user_id, raw_code)
+                return True, raw_code
+            return False, "تعذر إرسال الرمز إلى البريد الإلكتروني. تحقق من إعدادات البريد ثم أعد المحاولة."
+
+    if otp.channel == PasswordResetOtp.Channels.PHONE:
+        logger.info("Password reset OTP (SMS fallback) user=%s phone=%s code=%s", otp.user_id, otp.destination, raw_code)
+        if settings.DEBUG:
+            return True, raw_code
+        return True, None
+
+    return False, "قناة الإرسال غير مدعومة."
+
+
+def password_reset_request(request):
+    context = {
+        "username": "",
+        "contact": "",
+        "channel": PasswordResetOtp.Channels.EMAIL,
+    }
+    if request.method == "POST":
+        username = (request.POST.get("username") or "").strip()
+        contact = (request.POST.get("contact") or "").strip()
+        channel = (request.POST.get("channel") or PasswordResetOtp.Channels.EMAIL).strip().lower()
+        context.update({"username": username, "contact": contact, "channel": channel})
+
+        if channel not in {PasswordResetOtp.Channels.EMAIL, PasswordResetOtp.Channels.PHONE}:
+            messages.error(request, "اختر وسيلة صحيحة لاستلام الرمز.")
+            return render(request, "registration/password_reset_request.html", context)
+
+        if not username or not contact:
+            messages.error(request, "أدخل اسم المستخدم ووسيلة التواصل.")
+            return render(request, "registration/password_reset_request.html", context)
+
+        user = User.objects.filter(username__iexact=username).first()
+        if not user or not _matches_recovery_contact(user, channel, contact):
+            messages.error(request, "بيانات الاسترجاع غير صحيحة.")
+            return render(request, "registration/password_reset_request.html", context)
+
+        rate_key = f"pwd_reset_req:{user.id}:{_request_ip(request) or 'unknown'}"
+        request_count = int(cache.get(rate_key, 0))
+        if request_count >= PASSWORD_RESET_REQUEST_LIMIT_PER_HOUR:
+            messages.error(request, "تم تجاوز عدد المحاولات. أعد المحاولة بعد ساعة.")
+            return render(request, "registration/password_reset_request.html", context)
+
+        with transaction.atomic():
+            otp, raw_code = PasswordResetOtp.issue_code(
+                user=user,
+                channel=channel,
+                destination=contact,
+                request_ip=_request_ip(request),
+            )
+        sent, dispatch_payload = _dispatch_password_reset_otp(otp, raw_code)
+        if not sent:
+            otp.used_at = timezone.now()
+            otp.save(update_fields=["used_at"])
+            messages.error(request, dispatch_payload or "تعذر إرسال رمز التحقق. أعد المحاولة.")
+            return render(request, "registration/password_reset_request.html", context)
+
+        cache.set(rate_key, request_count + 1, timeout=3600)
+        request.session[PASSWORD_RESET_OTP_SESSION_KEY] = otp.id
+        request.session.pop(PASSWORD_RESET_VERIFIED_SESSION_KEY, None)
+        request.session.modified = True
+        if settings.DEBUG and dispatch_payload and channel == PasswordResetOtp.Channels.EMAIL:
+            messages.warning(request, "وضع التطوير: لم يتم إرسال بريد فعلي لأن SMTP غير مُعد. استخدم الرمز الظاهر أدناه.")
+        else:
+            messages.success(request, f"تم إرسال رمز تحقق إلى {_mask_contact(channel, contact)}.")
+        if settings.DEBUG and dispatch_payload:
+            messages.info(request, f"رمز التحقق (وضع التطوير): {dispatch_payload}")
+        return redirect("password_reset_verify")
+
+    return render(request, "registration/password_reset_request.html", context)
+
+
+def password_reset_verify(request):
+    otp_id = request.session.get(PASSWORD_RESET_OTP_SESSION_KEY)
+    otp = PasswordResetOtp.objects.select_related("user").filter(id=otp_id).first()
+    if not otp:
+        messages.error(request, "انتهت جلسة الاسترجاع. أعد طلب رمز جديد.")
+        return redirect("password_reset_request")
+
+    if otp.used_at is not None:
+        messages.error(request, "رمز التحقق لم يعد صالحًا. اطلب رمزًا جديدًا.")
+        return redirect("password_reset_request")
+
+    if otp.verified_at is not None:
+        request.session[PASSWORD_RESET_VERIFIED_SESSION_KEY] = otp.id
+        request.session.modified = True
+        return redirect("password_reset_set_new")
+
+    if otp.is_expired():
+        otp.used_at = timezone.now()
+        otp.save(update_fields=["used_at"])
+        messages.error(request, "انتهت صلاحية الرمز (15 دقيقة). اطلب رمزًا جديدًا.")
+        return redirect("password_reset_request")
+
+    if request.method == "POST":
+        code = (request.POST.get("code") or "").strip()
+        if not re.fullmatch(r"\d{6}", code):
+            messages.error(request, "أدخل رمزًا صحيحًا مكوّنًا من 6 أرقام.")
+        else:
+            if otp.verify_code(code):
+                otp.verified_at = timezone.now()
+                otp.save(update_fields=["verified_at"])
+                request.session[PASSWORD_RESET_VERIFIED_SESSION_KEY] = otp.id
+                request.session.modified = True
+                messages.success(request, "تم التحقق من الرمز. أدخل كلمة المرور الجديدة.")
+                return redirect("password_reset_set_new")
+
+            otp.attempts = otp.attempts + 1
+            update_fields = ["attempts"]
+            if otp.attempts >= PASSWORD_RESET_MAX_VERIFY_ATTEMPTS:
+                otp.used_at = timezone.now()
+                update_fields.append("used_at")
+            otp.save(update_fields=update_fields)
+            if otp.used_at:
+                messages.error(request, "تم تجاوز عدد محاولات التحقق. اطلب رمزًا جديدًا.")
+                return redirect("password_reset_request")
+            messages.error(request, "رمز التحقق غير صحيح.")
+
+    remaining_seconds = max(0, int((otp.expires_at - timezone.now()).total_seconds()))
+    context = {
+        "masked_contact": _mask_contact(otp.channel, otp.destination),
+        "channel": otp.channel,
+        "minutes_left": max(1, remaining_seconds // 60),
+    }
+    return render(request, "registration/password_reset_verify.html", context)
+
+
+def password_reset_set_new(request):
+    verified_otp_id = request.session.get(PASSWORD_RESET_VERIFIED_SESSION_KEY)
+    otp = PasswordResetOtp.objects.select_related("user").filter(id=verified_otp_id).first()
+    if not otp or otp.used_at is not None or otp.verified_at is None or otp.is_expired():
+        messages.error(request, "جلسة تعيين كلمة المرور انتهت. ابدأ من جديد.")
+        return redirect("password_reset_request")
+
+    if request.method == "POST":
+        password1 = (request.POST.get("new_password1") or "").strip()
+        password2 = (request.POST.get("new_password2") or "").strip()
+
+        if not password1 or not password2:
+            messages.error(request, "أدخل كلمة المرور الجديدة وتأكيدها.")
+        elif password1 != password2:
+            messages.error(request, "كلمتا المرور غير متطابقتين.")
+        else:
+            try:
+                password_validation.validate_password(password1, user=otp.user)
+            except ValidationError as exc:
+                for err in exc.messages:
+                    messages.error(request, err)
+            else:
+                with transaction.atomic():
+                    otp.user.set_password(password1)
+                    otp.user.save(update_fields=["password"])
+                    otp.used_at = timezone.now()
+                    otp.save(update_fields=["used_at"])
+                request.session.pop(PASSWORD_RESET_OTP_SESSION_KEY, None)
+                request.session.pop(PASSWORD_RESET_VERIFIED_SESSION_KEY, None)
+                request.session.modified = True
+                messages.success(request, "تم تغيير كلمة المرور بنجاح. يمكنك تسجيل الدخول الآن.")
+                return redirect("login")
+
+    return render(
+        request,
+        "registration/password_reset_new.html",
+        {"username": otp.user.username},
+    )
 
 
 def _active_branch_for_request(request) -> Branch | None:
@@ -169,7 +452,7 @@ def is_tech_user(user) -> bool:
         return True
     profile = _get_or_create_profile(user)
     return bool(
-        profile.role == "tech"
+        profile.role == UserProfile.Roles.TECH
         or user.groups.filter(name__in=["tech", "support"]).exists()
     )
 
@@ -181,6 +464,36 @@ def _can_use_pos(user) -> bool:
         return True
     profile = _get_or_create_profile(user)
     return profile.role in {UserProfile.Roles.CASHIER, UserProfile.Roles.MANAGER}
+
+
+def _has_explicit_model_acl(user, model_cls) -> bool:
+    perms = user.get_all_permissions()
+    app_label = model_cls._meta.app_label
+    model_name = model_cls._meta.model_name
+    relevant = {
+        f"{app_label}.view_{model_name}",
+        f"{app_label}.add_{model_name}",
+        f"{app_label}.change_{model_name}",
+        f"{app_label}.delete_{model_name}",
+    }
+    return bool(perms.intersection(relevant))
+
+
+def _has_model_write_acl(user, model_cls) -> bool:
+    app_label = model_cls._meta.app_label
+    model_name = model_cls._meta.model_name
+    return any(
+        user.has_perm(f"{app_label}.{verb}_{model_name}")
+        for verb in ("add", "change", "delete")
+    )
+
+
+def _blocked_by_view_only_acl(user, model_cls) -> bool:
+    if not user.is_authenticated or user.is_superuser:
+        return False
+    if not _has_explicit_model_acl(user, model_cls):
+        return False
+    return not _has_model_write_acl(user, model_cls)
 
 
 def _default_ticket_assignee():
@@ -290,12 +603,21 @@ def _reserved_quantity_for_part_branch(part_id: int, branch_id: int, *, exclude_
 
 
 def _available_stock_quantity(stock: Stock, *, exclude_transfer_id: int | None = None) -> int:
+    location_agg = StockLocation.objects.filter(part_id=stock.part_id, branch_id=stock.branch_id).aggregate(
+        rows=Count("id"),
+        total=Coalesce(Sum("quantity"), Value(0)),
+    )
+    if int(location_agg.get("rows") or 0) > 0:
+        on_hand = int(location_agg.get("total") or 0)
+    else:
+        on_hand = int(stock.quantity or 0)
+
     reserved = _reserved_quantity_for_part_branch(
         part_id=stock.part_id,
         branch_id=stock.branch_id,
         exclude_transfer_id=exclude_transfer_id,
     )
-    return max(stock.quantity - reserved, 0)
+    return max(on_hand - reserved, 0)
 
 
 def _reserved_quantity_map_for_stocks(stock_qs):
@@ -424,24 +746,62 @@ def part_search(request):
     active_branch = _active_branch_for_request(request)
     vehicles = Vehicle.objects.all().order_by("make", "model", "year")
     query_text = (request.GET.get("q") or "").strip()
-    query_vehicle_id = request.GET.get("vehicle")
-    stock_scope = _stock_scope_for_user(request.user).filter(quantity__gt=0)
-    if active_branch is not None:
-        stock_scope = stock_scope.filter(branch=active_branch)
-    elif is_admin_user(request.user):
-        stock_scope = stock_scope.none()
-
-    part_page = None
-    if query_text or query_vehicle_id:
-        stock_filter = Q()
-        if query_vehicle_id:
-            stock_filter &= Q(part__compatible_vehicles__id=query_vehicle_id)
-        if query_text:
-            stock_filter &= (
-                Q(part__part_number__icontains=query_text)
-                | Q(part__name__icontains=query_text)
-                | Q(part__barcode=query_text)
+    global_query_text = (request.GET.get("global_q") or "").strip()
+    active_query_text = global_query_text or query_text
+    search_mode = "global" if global_query_text else "branch"
+    query_vehicle_id = (request.GET.get("vehicle") or "").strip()
+    vehicle_filter = None
+    if query_vehicle_id:
+        if query_vehicle_id.isdigit():
+            vehicle_filter = Q(part__compatible_vehicles__id=int(query_vehicle_id))
+        else:
+            # Accept text input safely (e.g. "patrol") instead of crashing on numeric-id coercion.
+            vehicle_filter = (
+                Q(part__compatible_vehicles__make__icontains=query_vehicle_id)
+                | Q(part__compatible_vehicles__model__icontains=query_vehicle_id)
             )
+    stock_scope = _stock_scope_for_user(request.user).filter(quantity__gt=0)
+    if search_mode == "branch":
+        if active_branch is not None:
+            stock_scope = stock_scope.filter(branch=active_branch)
+        elif is_admin_user(request.user):
+            stock_scope = stock_scope.none()
+
+    ajax_request = _is_ajax_request(request)
+    part_page = None
+    if active_query_text or query_vehicle_id:
+        stock_filter = Q()
+        if vehicle_filter is not None:
+            stock_filter &= vehicle_filter
+        if active_query_text:
+            # Suggestions: keep short-query strict, allow contains for 3+ chars for practical UX.
+            if ajax_request and len(active_query_text) < 3:
+                stock_filter &= (
+                    Q(part__part_number__istartswith=active_query_text)
+                    | Q(part__name__istartswith=active_query_text)
+                    | Q(part__barcode__istartswith=active_query_text)
+                    | Q(part__sku__istartswith=active_query_text)
+                    | Q(part__manufacturer_part_number__istartswith=active_query_text)
+                    | Q(part__barcodes__barcode__istartswith=active_query_text)
+                )
+            # For 1-2 chars, allow only exact/prefix identifier matching to avoid noisy false positives.
+            elif len(active_query_text) < 3:
+                stock_filter &= (
+                    Q(part__part_number__istartswith=active_query_text)
+                    | Q(part__barcode__istartswith=active_query_text)
+                    | Q(part__sku__istartswith=active_query_text)
+                    | Q(part__manufacturer_part_number__istartswith=active_query_text)
+                    | Q(part__barcodes__barcode__istartswith=active_query_text)
+                )
+            else:
+                stock_filter &= (
+                    Q(part__part_number__icontains=active_query_text)
+                    | Q(part__name__icontains=active_query_text)
+                    | Q(part__barcode__icontains=active_query_text)
+                    | Q(part__sku__icontains=active_query_text)
+                    | Q(part__manufacturer_part_number__icontains=active_query_text)
+                    | Q(part__barcodes__barcode__icontains=active_query_text)
+                )
 
         filtered_stock = stock_scope.filter(stock_filter).order_by("part__name", "branch__name")
         part_queryset = (
@@ -457,8 +817,69 @@ def part_search(request):
             )
         )
         part_page = Paginator(part_queryset, 20).get_page(request.GET.get("page"))
+        if part_page:
+            page_parts = list(part_page.object_list)
+            part_ids = [part.id for part in page_parts]
+            branch_ids = {
+                stock.branch_id
+                for part in page_parts
+                for stock in (getattr(part, "available_stock", []) or [])
+                if getattr(stock, "branch_id", None)
+            }
+            location_map: dict[tuple[int, int], list[str]] = {}
+            location_total_map: dict[tuple[int, int], int] = {}
+            if part_ids and branch_ids:
+                location_rows = (
+                    StockLocation.objects.select_related("location")
+                    .filter(part_id__in=part_ids, branch_id__in=branch_ids)
+                    .order_by("location__code")
+                )
+                for row in location_rows:
+                    key = (row.part_id, row.branch_id)
+                    label = row.location.code
+                    qty = int(row.quantity or 0)
+                    location_total_map[key] = location_total_map.get(key, 0) + qty
+                    if qty > 0:
+                        label = f"{label} ({qty})"
+                        location_map.setdefault(key, []).append(label)
+
+            for part in page_parts:
+                for stock in (getattr(part, "available_stock", []) or []):
+                    key = (part.id, stock.branch_id)
+                    labels = location_map.get(key, [])
+                    if key in location_total_map:
+                        stock.display_quantity = int(location_total_map[key])
+                    else:
+                        stock.display_quantity = int(stock.quantity or 0)
+                    if labels:
+                        stock.location_summary = " | ".join(labels)
+                    else:
+                        stock.location_summary = (stock.location_in_warehouse or "").strip() or "-"
 
     cart_total_count = sum(_get_cart(request).values())
+
+    if ajax_request:
+        ajax_rows = []
+        if part_page:
+            for part in part_page.object_list:
+                stock_rows = list(getattr(part, "available_stock", []) or [])
+                if not stock_rows:
+                    continue
+                primary = stock_rows[0]
+                ajax_rows.append(
+                    {
+                        "part_id": part.id,
+                        "name": part.name,
+                        "part_number": part.part_number,
+                        "barcode": part.barcode or "",
+                        "price": str(part.selling_price),
+                        "branch": primary.branch.name if primary.branch else "",
+                        "stock_qty": int(getattr(primary, "display_quantity", primary.quantity) or 0),
+                    }
+                )
+                if len(ajax_rows) >= 15:
+                    break
+        return JsonResponse({"results": ajax_rows, "query": active_query_text, "mode": search_mode})
 
     return render(
         request,
@@ -468,9 +889,11 @@ def part_search(request):
             "part_page": part_page,
             "results": part_page.object_list if part_page else None,
             "query": query_text,
+            "global_query": global_query_text,
             "query_vehicle_id": query_vehicle_id,
             "cart_total_count": cart_total_count,
             "active_branch": active_branch,
+            "search_mode": search_mode,
         },
     )
 
@@ -524,6 +947,8 @@ def add_to_cart(request, stock_id):
     _warn_if_branch_unassigned(request)
     if not _can_use_pos(request.user):
         return HttpResponseForbidden("Your role is not allowed to modify POS cart.")
+    if _blocked_by_view_only_acl(request.user, Order):
+        return HttpResponseForbidden("Your account is view-only for sales actions.")
 
     stock = get_object_or_404(
         _stock_scope_for_user(request.user).filter(branch=request.active_branch),
@@ -577,6 +1002,8 @@ def add_to_cart(request, stock_id):
 def update_cart_item(request, stock_id):
     if not _can_use_pos(request.user):
         return HttpResponseForbidden("Your role is not allowed to modify POS cart.")
+    if _blocked_by_view_only_acl(request.user, Order):
+        return HttpResponseForbidden("Your account is view-only for sales actions.")
     cart = _get_cart(request)
     stock_id_str = str(stock_id)
 
@@ -616,6 +1043,8 @@ def update_cart_item(request, stock_id):
 def clear_cart(request):
     if not _can_use_pos(request.user):
         return HttpResponseForbidden("Your role is not allowed to modify POS cart.")
+    if _blocked_by_view_only_acl(request.user, Order):
+        return HttpResponseForbidden("Your account is view-only for sales actions.")
     request.session["cart"] = {}
     request.session.pop(POS_SCAN_UNDO_SESSION_KEY, None)
     request.session.pop(POS_SCAN_REPEAT_GUARD_SESSION_KEY, None)
@@ -679,6 +1108,8 @@ def cart_view(request):
 def finalize_order(request):
     if not _can_use_pos(request.user):
         return HttpResponseForbidden("Your role is not allowed to checkout POS sales.")
+    if _blocked_by_view_only_acl(request.user, Order):
+        return HttpResponseForbidden("Your account is view-only for sales actions.")
     cart = _get_cart(request)
     if not cart:
         messages.error(request, "Cart is empty.")
@@ -728,6 +1159,26 @@ def finalize_order(request):
         vat_amount = _quantize_money(taxable * VAT_RATE)
         grand_total = _quantize_money(taxable + vat_amount)
 
+        payment_method = (request.POST.get("payment_method") or TaxInvoice.PaymentMethod.CASH).strip().lower()
+        if payment_method not in TaxInvoice.PaymentMethod.values:
+            payment_method = TaxInvoice.PaymentMethod.CASH
+
+        customer_vat_number = (request.POST.get("customer_vat_number") or "").strip()
+        total_in_words_ar = (request.POST.get("total_in_words_ar") or "").strip()
+        due_date_raw = (request.POST.get("due_date") or "").strip()
+        due_date = None
+        if due_date_raw:
+            try:
+                due_date = date.fromisoformat(due_date_raw)
+            except ValueError:
+                due_date = None
+
+        advance_payment = _parse_decimal(request.POST.get("advance_payment"), Decimal("0.00"))
+        if advance_payment < 0:
+            advance_payment = Decimal("0.00")
+        if advance_payment > grand_total:
+            advance_payment = grand_total
+
         customer_phone = (request.POST.get("phone_number") or "").strip()
         customer_name = (request.POST.get("customer_name") or "").strip()
         customer_car = (request.POST.get("customer_car") or "").strip()
@@ -760,6 +1211,39 @@ def finalize_order(request):
             discount_amount=_quantize_money(discount),
             grand_total=grand_total,
         )
+
+        if customer_obj:
+            CustomerLedgerEntry.objects.create(
+                customer=customer_obj,
+                order=order,
+                entry_type=CustomerLedgerEntry.EntryType.INVOICE,
+                amount=grand_total,
+                created_by=request.user,
+                notes=f"Order {order.order_id}",
+            )
+            if advance_payment > 0:
+                mapped_method = {
+                    TaxInvoice.PaymentMethod.CASH: Payment.Method.CASH,
+                    TaxInvoice.PaymentMethod.CARD: Payment.Method.CARD,
+                    TaxInvoice.PaymentMethod.TRANSFER: Payment.Method.BANK,
+                }.get(payment_method, Payment.Method.CASH)
+                payment = Payment.objects.create(
+                    customer=customer_obj,
+                    branch=order.branch,
+                    method=mapped_method,
+                    amount=advance_payment,
+                    reference=f"POS-{order.order_id}",
+                    order=order,
+                    created_by=request.user,
+                )
+                CustomerLedgerEntry.objects.create(
+                    customer=customer_obj,
+                    order=order,
+                    entry_type=CustomerLedgerEntry.EntryType.PAYMENT,
+                    amount=payment.amount,
+                    created_by=request.user,
+                    notes=f"Advance payment ({payment.get_method_display()})",
+                )
 
         for stock_id, qty in cart.items():
             stock = stock_map[stock_id]
@@ -820,6 +1304,22 @@ def finalize_order(request):
                 },
             )
 
+        try:
+            create_posted_invoice_from_order(
+                order=order,
+                actor=request.user,
+                payment_method=payment_method,
+                due_date=due_date,
+                customer_vat_number=customer_vat_number,
+                advance_payment=advance_payment,
+                total_in_words_ar=total_in_words_ar,
+            )
+        except Exception as exc:  # noqa: BLE001
+            messages.warning(
+                request,
+                f"Sale saved, but tax invoice posting is pending ({exc}).",
+            )
+
     request.session["cart"] = {}
     request.session.modified = True
     messages.success(request, f"Sale completed. Order {order.order_id} created.")
@@ -835,7 +1335,175 @@ def receipt_view(request, order_id):
     if not _user_has_branch_access(request.user, order.branch):
         return HttpResponseForbidden("You do not have access to this receipt.")
 
-    return render(request, "inventory/receipt.html", {"order": order})
+    invoice = TaxInvoice.objects.select_related("branch", "order").prefetch_related("lines").filter(order=order).first()
+    if invoice is None:
+        try:
+            invoice = create_posted_invoice_from_order(order=order, actor=request.user)
+        except Exception:  # noqa: BLE001
+            invoice = None
+
+    if invoice is None:
+        return render(request, "inventory/receipt.html", {"order": order, "invoice": None})
+
+    context = build_invoice_template_context(invoice)
+    context.update(
+        {
+            "order": order,
+            "invoice": invoice,
+            "layout_mode": (request.GET.get("layout") or "a4").strip().lower(),
+        }
+    )
+    return render(request, "inventory/receipt.html", context)
+
+
+@login_required
+@require_GET
+def receipt_pdf_view(request, order_id):
+    order = get_object_or_404(
+        Order.objects.select_related("branch").prefetch_related("items__part"),
+        order_id=order_id,
+    )
+    if not _user_has_branch_access(request.user, order.branch):
+        return HttpResponseForbidden("You do not have access to this invoice.")
+
+    invoice = TaxInvoice.objects.select_related("branch", "order").prefetch_related("lines").filter(order=order).first()
+    if invoice is None:
+        try:
+            invoice = create_posted_invoice_from_order(order=order, actor=request.user)
+        except Exception as exc:  # noqa: BLE001
+            return HttpResponseBadRequest(f"Invoice is not available yet: {exc}")
+
+    layout_mode = (request.GET.get("layout") or "a4").strip().lower()
+    if layout_mode not in {"a4", "thermal"}:
+        layout_mode = "a4"
+    pdf_bytes = render_invoice_pdf_bytes(invoice, layout_mode=layout_mode)
+    filename = f"INV-{invoice.branch.code}-{invoice.invoice_number:06d}.pdf"
+    response = HttpResponse(pdf_bytes, content_type="application/pdf")
+    response["Content-Disposition"] = f'inline; filename="{filename}"'
+    return response
+
+
+@login_required
+@require_GET
+def invoice_amount_words(request):
+    if not _can_use_pos(request.user):
+        return HttpResponseForbidden("Your role is not allowed to access invoice utilities.")
+
+    amount_raw = (request.GET.get("amount") or "0").strip()
+    amount = _parse_decimal(amount_raw, Decimal("0.00"))
+    if amount < 0:
+        amount = Decimal("0.00")
+    words = amount_to_words_ar(amount)
+    return JsonResponse({"amount": f"{_quantize_money(amount):.2f}", "words_ar": words})
+
+
+def _client_ip(request) -> str:
+    return (
+        request.META.get("HTTP_X_FORWARDED_FOR", "").split(",")[0].strip()
+        or request.META.get("REMOTE_ADDR", "").strip()
+    )
+
+
+def _smacc_ip_allowed(ip_address: str) -> bool:
+    allowlist = {str(value).strip() for value in getattr(settings, "SMACC_WEBHOOK_IP_ALLOWLIST", []) if str(value).strip()}
+    if not allowlist:
+        return True
+    return ip_address in allowlist
+
+
+def _smacc_rate_limited(ip_address: str) -> bool:
+    limit = int(getattr(settings, "SMACC_WEBHOOK_RATE_LIMIT_PER_MINUTE", 120) or 120)
+    if limit <= 0:
+        return False
+    bucket = timezone.now().strftime("%Y%m%d%H%M")
+    key = f"inventory:smacc:webhook:{ip_address}:{bucket}"
+    try:
+        current = cache.incr(key)
+    except ValueError:
+        cache.set(key, 1, timeout=65)
+        current = 1
+    return current > limit
+
+
+@csrf_exempt
+@require_POST
+def smacc_webhook(request):
+    ip_address = _client_ip(request)
+    if not _smacc_ip_allowed(ip_address):
+        return HttpResponseForbidden("IP is not allowed.")
+    if _smacc_rate_limited(ip_address):
+        return JsonResponse({"ok": False, "error": "Rate limit exceeded."}, status=429)
+
+    signature_header = str(getattr(settings, "SMACC_WEBHOOK_SIGNATURE_HEADER", "X-Smacc-Signature") or "X-Smacc-Signature")
+    signature = request.headers.get(signature_header, "")
+    client = SmaccClient()
+    if not client.verify_webhook_signature(request.body, signature):
+        return HttpResponseForbidden("Invalid webhook signature.")
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return HttpResponseBadRequest("Invalid JSON body.")
+
+    event_type = str(payload.get("event") or payload.get("type") or "").strip()
+    if event_type and event_type not in SMACC_SYNC_EVENT_TYPES:
+        return JsonResponse({"ok": True, "ignored": event_type})
+
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        data = {}
+    origin_id = str(data.get("originId") or data.get("origin_id") or payload.get("originId") or "").strip()
+    job_id = str(data.get("jobId") or data.get("job_id") or payload.get("jobId") or "").strip()
+    document_id = str(data.get("documentId") or data.get("document_id") or payload.get("documentId") or "").strip()
+    status_text = str(data.get("status") or payload.get("status") or "").strip().upper()
+    error_text = str(data.get("error") or payload.get("error") or "").strip()
+
+    queue_item = None
+    if origin_id:
+        queue_item = SmaccSyncQueue.objects.filter(idempotency_key=f"invoice:{origin_id}").first()
+    if queue_item is None and job_id:
+        queue_item = SmaccSyncQueue.objects.filter(smacc_job_id=job_id).first()
+    if queue_item is None and document_id:
+        queue_item = SmaccSyncQueue.objects.filter(smacc_document_id=document_id).first()
+
+    if queue_item is None:
+        return JsonResponse({"ok": True, "matched_queue": None})
+
+    previous_status = queue_item.status
+    if job_id:
+        queue_item.smacc_job_id = job_id
+    if document_id:
+        queue_item.smacc_document_id = document_id
+
+    if status_text in {"FAILED", "ERROR", "REJECTED"}:
+        queue_item.status = SmaccSyncQueue.Status.FAILED
+        queue_item.last_error = error_text or status_text or "SMACC webhook failure."
+    else:
+        queue_item.status = SmaccSyncQueue.Status.SYNCED
+        queue_item.last_error = ""
+
+    queue_item.save(update_fields=["status", "smacc_job_id", "smacc_document_id", "last_error", "updated_at"])
+    SmaccSyncLog.objects.create(
+        queue_item=queue_item,
+        request_payload={"event": event_type, "ip": ip_address, "payload": payload},
+        response_payload={"previous_status": previous_status, "new_status": queue_item.status},
+        http_status=200,
+    )
+    log_audit_event(
+        action="smacc.webhook",
+        reason=event_type or "smacc_webhook",
+        object_type="SmaccSyncQueue",
+        object_id=queue_item.id,
+        branch=None,
+        before={"status": previous_status},
+        after={
+            "status": queue_item.status,
+            "smacc_job_id": queue_item.smacc_job_id,
+            "smacc_document_id": queue_item.smacc_document_id,
+        },
+        ip_address=ip_address,
+    )
+    return JsonResponse({"ok": True, "matched_queue": queue_item.id, "status": queue_item.status})
 
 
 @login_required
@@ -849,6 +1517,1157 @@ def order_list(request):
 
     page_obj = Paginator(orders, 25).get_page(request.GET.get("page"))
     return render(request, "inventory/order_list.html", {"orders": page_obj, "page_obj": page_obj})
+
+
+def _generate_po_number() -> str:
+    base = timezone.localtime().strftime("PO-%Y%m%d-%H%M%S")
+    candidate = base
+    suffix = 1
+    while PurchaseOrder.objects.filter(po_number=candidate).exists():
+        candidate = f"{base}-{suffix:02d}"
+        suffix += 1
+    return candidate
+
+
+def _branch_in_scope_or_none(user, branch_id: str | None) -> Branch | None:
+    if not branch_id or not str(branch_id).isdigit():
+        return None
+    branch = Branch.objects.filter(id=int(branch_id)).first()
+    if not branch:
+        return None
+    if _user_has_branch_access(user, branch):
+        return branch
+    return None
+
+
+@login_required
+@manager_required
+def vendor_list(request):
+    query = (request.GET.get("q") or "").strip()
+    vendors = Vendor.objects.all().order_by("name_ar", "name_en", "vendor_code")
+    if query:
+        vendors = vendors.filter(
+            Q(vendor_code__icontains=query)
+            | Q(name_ar__icontains=query)
+            | Q(name_en__icontains=query)
+            | Q(phone__icontains=query)
+            | Q(email__icontains=query)
+        )
+    page_obj = Paginator(vendors, 40).get_page(request.GET.get("page"))
+    return render(
+        request,
+        "inventory/vendor_list.html",
+        {
+            "vendors": page_obj.object_list,
+            "page_obj": page_obj,
+            "query": query,
+        },
+    )
+
+
+@login_required
+@manager_required
+def vendor_create(request):
+    if _blocked_by_view_only_acl(request.user, Vendor):
+        return HttpResponseForbidden("حسابك يملك صلاحية عرض فقط على إجراءات الموردين.")
+    if request.method == "POST":
+        name_ar = (request.POST.get("name_ar") or "").strip()
+        name_en = (request.POST.get("name_en") or "").strip()
+        if not name_ar and not name_en:
+            messages.error(request, "يجب إدخال اسم المورد بالعربية أو الإنجليزية.")
+            return redirect("vendor_create")
+        vendor = Vendor.objects.create(
+            vendor_code=(request.POST.get("vendor_code") or "").strip().upper(),
+            name_ar=name_ar,
+            name_en=name_en or None,
+            phone=(request.POST.get("phone") or "").strip(),
+            email=(request.POST.get("email") or "").strip(),
+            vat_number=(request.POST.get("vat_number") or "").strip(),
+            cr_number=(request.POST.get("cr_number") or "").strip(),
+            address=(request.POST.get("address") or "").strip(),
+            notes=(request.POST.get("notes") or "").strip(),
+            is_active=(request.POST.get("is_active") or "1") in {"1", "true", "on"},
+        )
+        log_audit_event(
+            actor=request.user,
+            action="vendor.create",
+            reason="vendor_created",
+            object_type="Vendor",
+            object_id=vendor.id,
+            branch=_audit_branch_for_user(request.user),
+            before={},
+            after={"vendor_code": vendor.vendor_code, "name_ar": vendor.name_ar, "name_en": vendor.name_en},
+        )
+        messages.success(request, "تم إنشاء المورد بنجاح.")
+        return redirect("vendor_detail", vendor_id=vendor.id)
+    return render(request, "inventory/vendor_form.html", {"vendor": None})
+
+
+@login_required
+@manager_required
+def vendor_detail(request, vendor_id: int):
+    vendor = get_object_or_404(Vendor, id=vendor_id)
+    po_count = vendor.purchase_orders.count()
+    return render(
+        request,
+        "inventory/vendor_detail.html",
+        {"vendor": vendor, "po_count": po_count},
+    )
+
+
+@login_required
+@manager_required
+def vendor_edit(request, vendor_id: int):
+    vendor = get_object_or_404(Vendor, id=vendor_id)
+    if _blocked_by_view_only_acl(request.user, Vendor):
+        return HttpResponseForbidden("حسابك يملك صلاحية عرض فقط على إجراءات الموردين.")
+    if request.method == "POST":
+        before = {
+            "name_ar": vendor.name_ar,
+            "name_en": vendor.name_en,
+            "phone": vendor.phone,
+            "email": vendor.email,
+            "is_active": vendor.is_active,
+        }
+        vendor.vendor_code = (request.POST.get("vendor_code") or vendor.vendor_code).strip().upper()
+        vendor.name_ar = (request.POST.get("name_ar") or "").strip()
+        vendor.name_en = (request.POST.get("name_en") or "").strip() or None
+        vendor.phone = (request.POST.get("phone") or "").strip()
+        vendor.email = (request.POST.get("email") or "").strip()
+        vendor.vat_number = (request.POST.get("vat_number") or "").strip()
+        vendor.cr_number = (request.POST.get("cr_number") or "").strip()
+        vendor.address = (request.POST.get("address") or "").strip()
+        vendor.notes = (request.POST.get("notes") or "").strip()
+        vendor.is_active = (request.POST.get("is_active") or "1") in {"1", "true", "on"}
+        vendor.save()
+        log_audit_event(
+            actor=request.user,
+            action="vendor.update",
+            reason="vendor_updated",
+            object_type="Vendor",
+            object_id=vendor.id,
+            branch=_audit_branch_for_user(request.user),
+            before=before,
+            after={
+                "name_ar": vendor.name_ar,
+                "name_en": vendor.name_en,
+                "phone": vendor.phone,
+                "email": vendor.email,
+                "is_active": vendor.is_active,
+            },
+        )
+        messages.success(request, "تم تحديث بيانات المورد.")
+        return redirect("vendor_detail", vendor_id=vendor.id)
+    return render(request, "inventory/vendor_form.html", {"vendor": vendor})
+
+
+@login_required
+@manager_required
+def purchase_order_list(request):
+    status_filter = (request.GET.get("status") or "").strip().lower()
+    branch_filter = (request.GET.get("branch") or "").strip()
+    orders = PurchaseOrder.objects.select_related("vendor", "branch", "created_by").prefetch_related("lines").order_by("-created_at")
+    if not is_admin_user(request.user):
+        branch = _user_branch(request.user)
+        if not branch:
+            orders = orders.none()
+        else:
+            orders = orders.filter(branch=branch)
+    elif branch_filter.isdigit():
+        orders = orders.filter(branch_id=int(branch_filter))
+    if status_filter in PurchaseOrder.Status.values:
+        orders = orders.filter(status=status_filter)
+    page_obj = Paginator(orders, 30).get_page(request.GET.get("page"))
+    return render(
+        request,
+        "inventory/purchase_order_list.html",
+        {
+            "orders": page_obj.object_list,
+            "page_obj": page_obj,
+            "status_filter": status_filter,
+            "status_choices": PurchaseOrder.Status.choices,
+            "branches": _accessible_branches(request.user),
+            "selected_branch": int(branch_filter) if branch_filter.isdigit() else None,
+        },
+    )
+
+
+@login_required
+@manager_required
+@active_branch_required
+def purchase_order_create(request):
+    if _blocked_by_view_only_acl(request.user, PurchaseOrder):
+        return HttpResponseForbidden("حسابك يملك صلاحية عرض فقط على إجراءات أوامر الشراء.")
+    branches = _accessible_branches(request.user)
+    vendors = Vendor.objects.filter(is_active=True).order_by("name_ar", "name_en")
+    parts = Part.objects.order_by("part_number")
+    if request.method == "POST":
+        vendor = Vendor.objects.filter(id=request.POST.get("vendor_id"), is_active=True).first()
+        branch = request.active_branch
+        if is_admin_user(request.user):
+            selected_branch = _branch_in_scope_or_none(request.user, request.POST.get("branch_id"))
+            if selected_branch:
+                branch = selected_branch
+
+        if not vendor:
+            messages.error(request, "يرجى اختيار المورد.")
+            return redirect("purchase_order_create")
+        if not branch:
+            messages.error(request, "يرجى اختيار الفرع.")
+            return redirect("purchase_order_create")
+
+        part_ids = request.POST.getlist("part_id")
+        qty_values = request.POST.getlist("qty_ordered")
+        cost_values = request.POST.getlist("unit_cost")
+        tax_values = request.POST.getlist("tax_rate")
+        discount_values = request.POST.getlist("discount")
+        line_payloads = []
+        for idx, raw_part_id in enumerate(part_ids):
+            if not str(raw_part_id).isdigit():
+                continue
+            try:
+                qty_ordered = int((qty_values[idx] if idx < len(qty_values) else "0") or 0)
+            except (TypeError, ValueError):
+                qty_ordered = 0
+            unit_cost = _parse_decimal(cost_values[idx] if idx < len(cost_values) else "0", Decimal("0.00"))
+            tax_rate = _parse_decimal(tax_values[idx] if idx < len(tax_values) else "15", Decimal("15.00"))
+            discount = _parse_decimal(discount_values[idx] if idx < len(discount_values) else "0", Decimal("0.00"))
+            if qty_ordered <= 0:
+                continue
+            part = Part.objects.filter(id=int(raw_part_id)).first()
+            if not part:
+                continue
+            line_payloads.append(
+                {
+                    "part": part,
+                    "qty_ordered": qty_ordered,
+                    "unit_cost": unit_cost,
+                    "tax_rate": tax_rate,
+                    "discount": discount,
+                }
+            )
+        if not line_payloads:
+            messages.error(request, "يجب إضافة بند صحيح واحد على الأقل في أمر الشراء.")
+            return redirect("purchase_order_create")
+
+        expected_date = None
+        expected_date_raw = (request.POST.get("expected_date") or "").strip()
+        if expected_date_raw:
+            try:
+                expected_date = date.fromisoformat(expected_date_raw)
+            except ValueError:
+                expected_date = None
+        notes = (request.POST.get("notes") or "").strip()
+        initial_status = PurchaseOrder.Status.SENT if (request.POST.get("mark_sent") or "") in {"1", "true", "on"} else PurchaseOrder.Status.DRAFT
+
+        with transaction.atomic():
+            po = PurchaseOrder.objects.create(
+                po_number=_generate_po_number(),
+                vendor=vendor,
+                branch=branch,
+                created_by=request.user,
+                status=initial_status,
+                expected_date=expected_date,
+                notes=notes,
+            )
+            for payload in line_payloads:
+                PurchaseOrderLine.objects.create(po=po, **payload)
+            log_audit_event(
+                actor=request.user,
+                action="purchase_order.create",
+                reason=notes or "purchase_order_created",
+                object_type="PurchaseOrder",
+                object_id=po.id,
+                branch=po.branch,
+                before={},
+                after={
+                    "po_number": po.po_number,
+                    "vendor_id": po.vendor_id,
+                    "status": po.status,
+                    "line_count": len(line_payloads),
+                },
+            )
+        messages.success(request, f"تم إنشاء أمر الشراء {po.po_number}.")
+        return redirect("purchase_order_detail", po_id=po.id)
+
+    return render(
+        request,
+        "inventory/purchase_order_form.html",
+        {
+            "vendors": vendors,
+            "parts": parts,
+            "branches": branches,
+            "active_branch": request.active_branch,
+        },
+    )
+
+
+@login_required
+@manager_required
+def purchase_order_detail(request, po_id: int):
+    po = get_object_or_404(
+        PurchaseOrder.objects.select_related("vendor", "branch", "created_by").prefetch_related("lines__part", "receipts"),
+        id=po_id,
+    )
+    if not _user_has_branch_access(request.user, po.branch):
+        return HttpResponseForbidden("ليس لديك صلاحية الوصول إلى أمر الشراء هذا.")
+    if request.method == "POST":
+        if _blocked_by_view_only_acl(request.user, PurchaseOrderLine):
+            return HttpResponseForbidden("حسابك يملك صلاحية عرض فقط على إجراءات أوامر الشراء.")
+        if po.is_closed:
+            messages.error(request, "لا يمكن تعديل أوامر الشراء المغلقة.")
+            return redirect("purchase_order_detail", po_id=po.id)
+        part = Part.objects.filter(id=request.POST.get("part_id")).first()
+        try:
+            qty_ordered = int(request.POST.get("qty_ordered") or 0)
+        except (TypeError, ValueError):
+            qty_ordered = 0
+        unit_cost = _parse_decimal(request.POST.get("unit_cost"), Decimal("0.00"))
+        tax_rate = _parse_decimal(request.POST.get("tax_rate"), Decimal("15.00"))
+        discount = _parse_decimal(request.POST.get("discount"), Decimal("0.00"))
+        if not part or qty_ordered <= 0:
+            messages.error(request, "يرجى اختيار صنف صحيح وإدخال كمية أكبر من صفر.")
+            return redirect("purchase_order_detail", po_id=po.id)
+        try:
+            PurchaseOrderLine.objects.create(
+                po=po,
+                part=part,
+                qty_ordered=qty_ordered,
+                unit_cost=unit_cost,
+                tax_rate=tax_rate,
+                discount=discount,
+            )
+        except IntegrityError:
+            messages.error(request, "هذا الصنف موجود مسبقًا في بنود أمر الشراء.")
+            return redirect("purchase_order_detail", po_id=po.id)
+        messages.success(request, "تمت إضافة بند أمر الشراء.")
+        return redirect("purchase_order_detail", po_id=po.id)
+    return render(
+        request,
+        "inventory/purchase_order_detail.html",
+        {
+            "po": po,
+            "lines": po.lines.select_related("part").order_by("id"),
+            "parts": Part.objects.order_by("part_number"),
+        },
+    )
+
+
+@login_required
+@manager_required
+def purchase_receipt_list(request):
+    status_filter = (request.GET.get("status") or "").strip().lower()
+    receipts = PurchaseReceipt.objects.select_related("po", "branch", "received_by").order_by("-received_at")
+    if not is_admin_user(request.user):
+        branch = _user_branch(request.user)
+        if not branch:
+            receipts = receipts.none()
+        else:
+            receipts = receipts.filter(branch=branch)
+    if status_filter in PurchaseReceipt.Status.values:
+        receipts = receipts.filter(status=status_filter)
+    page_obj = Paginator(receipts, 30).get_page(request.GET.get("page"))
+    return render(
+        request,
+        "inventory/purchase_receipt_list.html",
+        {
+            "receipts": page_obj.object_list,
+            "page_obj": page_obj,
+            "status_filter": status_filter,
+            "status_choices": PurchaseReceipt.Status.choices,
+        },
+    )
+
+
+@login_required
+@manager_required
+@require_POST
+def purchase_receipt_create(request, po_id: int):
+    po = get_object_or_404(PurchaseOrder.objects.select_related("branch"), id=po_id)
+    if not _user_has_branch_access(request.user, po.branch):
+        return HttpResponseForbidden("ليس لديك صلاحية الوصول إلى أمر الشراء هذا.")
+    if _blocked_by_view_only_acl(request.user, PurchaseReceipt):
+        return HttpResponseForbidden("حسابك يملك صلاحية عرض فقط على إجراءات الاستلام.")
+    if po.status == PurchaseOrder.Status.CANCELLED:
+        messages.error(request, "لا يمكن إنشاء استلام لأمر شراء ملغي.")
+        return redirect("purchase_order_detail", po_id=po.id)
+    receipt = PurchaseReceipt.objects.create(
+        po=po,
+        branch=po.branch,
+        received_by=request.user,
+        invoice_ref=(request.POST.get("invoice_ref") or "").strip(),
+        notes=(request.POST.get("notes") or "").strip(),
+        status=PurchaseReceipt.Status.DRAFT,
+    )
+    messages.success(request, f"تم إنشاء مسودة سند الاستلام GRN-{receipt.id}.")
+    return redirect("purchase_receipt_detail", receipt_id=receipt.id)
+
+
+def _resolve_po_line_from_scan(*, po: PurchaseOrder, scan_code: str) -> PurchaseOrderLine | None:
+    token = (scan_code or "").strip()
+    if not token:
+        return None
+    matched_part = (
+        Part.objects.filter(
+            Q(part_number__iexact=token)
+            | Q(barcode__iexact=token)
+            | Q(sku__iexact=token)
+            | Q(manufacturer_part_number__iexact=token)
+            | Q(barcodes__barcode__iexact=token)
+        )
+        .distinct()
+        .first()
+    )
+    if not matched_part:
+        return None
+    return (
+        po.lines.select_related("part")
+        .filter(part=matched_part)
+        .order_by("id")
+        .first()
+    )
+
+
+@login_required
+@manager_required
+def purchase_receipt_detail(request, receipt_id: int):
+    receipt = get_object_or_404(
+        PurchaseReceipt.objects.select_related("po", "po__vendor", "branch", "received_by")
+        .prefetch_related("lines__po_line__part"),
+        id=receipt_id,
+    )
+    if not _user_has_branch_access(request.user, receipt.branch):
+        return HttpResponseForbidden("ليس لديك صلاحية الوصول إلى سجل الاستلام هذا.")
+    if request.method == "POST":
+        if _blocked_by_view_only_acl(request.user, PurchaseReceiptLine):
+            return HttpResponseForbidden("حسابك يملك صلاحية عرض فقط على إجراءات الاستلام.")
+        if receipt.status == PurchaseReceipt.Status.POSTED:
+            messages.error(request, "سند الاستلام المرحّل غير قابل للتعديل.")
+            return redirect("purchase_receipt_detail", receipt_id=receipt.id)
+        po_line = receipt.po.lines.select_related("part").filter(id=request.POST.get("po_line_id")).first()
+        if not po_line:
+            po_line = _resolve_po_line_from_scan(po=receipt.po, scan_code=request.POST.get("scan_code"))
+        if not po_line:
+            messages.error(request, "يرجى اختيار سطر أمر الشراء أو إدخال كود مسح صحيح.")
+            return redirect("purchase_receipt_detail", receipt_id=receipt.id)
+        try:
+            qty_received = int(request.POST.get("qty_received") or 0)
+        except (TypeError, ValueError):
+            qty_received = 0
+        if qty_received <= 0:
+            messages.error(request, "الكمية يجب أن تكون أكبر من صفر.")
+            return redirect("purchase_receipt_detail", receipt_id=receipt.id)
+        if qty_received > po_line.remaining_qty:
+            messages.error(request, f"الكمية تتجاوز المتبقي في أمر الشراء ({po_line.remaining_qty}).")
+            return redirect("purchase_receipt_detail", receipt_id=receipt.id)
+        unit_cost = _parse_decimal(request.POST.get("unit_cost"), po_line.unit_cost)
+        location = Location.objects.filter(id=request.POST.get("location_id"), branch=receipt.branch).first()
+        PurchaseReceiptLine.objects.create(
+            receipt=receipt,
+            po_line=po_line,
+            qty_received=qty_received,
+            unit_cost=unit_cost,
+            location=location,
+            batch_lot=(request.POST.get("batch_lot") or "").strip(),
+            expiry=(request.POST.get("expiry") or None) or None,
+        )
+        messages.success(request, "تمت إضافة بند الاستلام.")
+        return redirect("purchase_receipt_detail", receipt_id=receipt.id)
+
+    return render(
+        request,
+        "inventory/purchase_receipt_detail.html",
+        {
+            "receipt": receipt,
+            "lines": receipt.lines.select_related("po_line", "po_line__part", "location").order_by("id"),
+            "po_lines_open": receipt.po.lines.select_related("part").order_by("id"),
+            "locations": Location.objects.filter(branch=receipt.branch).order_by("code"),
+        },
+    )
+
+
+@login_required
+@manager_required
+@require_POST
+def purchase_receipt_post(request, receipt_id: int):
+    receipt = get_object_or_404(
+        PurchaseReceipt.objects.select_related("po", "po__vendor", "branch", "received_by"),
+        id=receipt_id,
+    )
+    if not _user_has_branch_access(request.user, receipt.branch):
+        return HttpResponseForbidden("ليس لديك صلاحية الوصول إلى سجل الاستلام هذا.")
+    if _blocked_by_view_only_acl(request.user, PurchaseReceipt) or _blocked_by_view_only_acl(request.user, Stock):
+        return HttpResponseForbidden("حسابك يملك صلاحية عرض فقط على إجراءات الاستلام.")
+    reason = (request.POST.get("reason") or "").strip() or "purchase_receipt_post"
+
+    try:
+        with transaction.atomic():
+            locked_receipt = (
+                PurchaseReceipt.objects.select_for_update()
+                .select_related("po", "branch")
+                .filter(id=receipt.id)
+                .first()
+            )
+            if not locked_receipt:
+                raise ValidationError("سجل الاستلام غير موجود.")
+            if locked_receipt.status == PurchaseReceipt.Status.POSTED:
+                raise ValidationError("تم ترحيل سند الاستلام مسبقًا.")
+            receipt_lines = list(
+                locked_receipt.lines.select_for_update().select_related("po_line", "po_line__part", "location").order_by("id")
+            )
+            if not receipt_lines:
+                raise ValidationError("لا يمكن ترحيل سند استلام بدون بنود.")
+
+            for line in receipt_lines:
+                po_line = PurchaseOrderLine.objects.select_for_update().select_related("part", "po").get(id=line.po_line_id)
+                remaining = max(int(po_line.qty_ordered or 0) - int(po_line.qty_received or 0), 0)
+                if remaining <= 0:
+                    continue
+                if int(line.qty_received or 0) > remaining:
+                    raise ValidationError(
+                        f"بند الاستلام للصنف {po_line.part.part_number} يتجاوز الكمية المتبقية ({remaining})."
+                    )
+
+                stock_before = int(
+                    Stock.objects.filter(part=po_line.part, branch=locked_receipt.branch).values_list("quantity", flat=True).first()
+                    or 0
+                )
+                add_stock_to_location(
+                    part=po_line.part,
+                    branch=locked_receipt.branch,
+                    quantity=line.qty_received,
+                    reason=reason,
+                    actor=request.user,
+                    location=line.location,
+                    action="purchase_in",
+                )
+                update_branch_average_cost(
+                    part=po_line.part,
+                    branch=locked_receipt.branch,
+                    received_qty=line.qty_received,
+                    received_unit_cost=line.unit_cost,
+                )
+                po_line.qty_received = int(po_line.qty_received or 0) + int(line.qty_received or 0)
+                po_line.save(update_fields=["qty_received"])
+
+                stock_after = int(
+                    Stock.objects.filter(part=po_line.part, branch=locked_receipt.branch).values_list("quantity", flat=True).first()
+                    or 0
+                )
+                log_audit_event(
+                    actor=request.user,
+                    action="stock.adjustment",
+                    reason=reason,
+                    object_type="Stock",
+                    object_id=f"{po_line.part_id}:{locked_receipt.branch_id}",
+                    branch=locked_receipt.branch,
+                    before={
+                        "quantity": stock_before,
+                        "part_number": po_line.part.part_number,
+                        "reason": "purchase_receipt",
+                        "receipt_id": locked_receipt.id,
+                    },
+                    after={
+                        "quantity": stock_after,
+                        "part_number": po_line.part.part_number,
+                        "reason": "purchase_receipt",
+                        "receipt_id": locked_receipt.id,
+                    },
+                )
+
+            locked_receipt.status = PurchaseReceipt.Status.POSTED
+            locked_receipt.posted_at = timezone.now()
+            locked_receipt.save(update_fields=["status", "posted_at"])
+            locked_receipt.po.refresh_status_from_lines()
+            log_audit_event(
+                actor=request.user,
+                action="purchase_receipt.post",
+                reason=reason,
+                object_type="PurchaseReceipt",
+                object_id=locked_receipt.id,
+                branch=locked_receipt.branch,
+                before={"status": PurchaseReceipt.Status.DRAFT},
+                after={"status": locked_receipt.status, "po_status": locked_receipt.po.status},
+            )
+    except (ValidationError, ValueError) as exc:
+        messages.error(request, str(exc))
+        return redirect("purchase_receipt_detail", receipt_id=receipt.id)
+
+    messages.success(request, f"تم ترحيل سند الاستلام GRN-{receipt.id} بنجاح.")
+    return redirect("purchase_order_detail", po_id=receipt.po_id)
+
+
+@login_required
+def customer_profile(request, customer_id: int):
+    customer = get_object_or_404(Customer, id=customer_id)
+    ledger = customer.ledger_entries.select_related("order", "created_by").order_by("-created_at", "-id")
+    payments = customer.payments.select_related("branch", "created_by", "order").order_by("-created_at")
+    credits = customer.credit_notes.select_related("branch", "created_by", "order").order_by("-created_at")
+    customer_orders = Order.objects.select_related("branch").filter(customer=customer).order_by("-created_at")
+    if not is_manager(request.user):
+        user_branch = _user_branch(request.user)
+        if not user_branch:
+            ledger = ledger.none()
+            payments = payments.none()
+            credits = credits.none()
+            customer_orders = customer_orders.none()
+        else:
+            ledger = ledger.filter(Q(order__branch=user_branch) | Q(order__isnull=True))
+            payments = payments.filter(branch=user_branch)
+            credits = credits.filter(branch=user_branch)
+            customer_orders = customer_orders.filter(branch=user_branch)
+    return render(
+        request,
+        "inventory/customer_profile.html",
+        {
+            "customer": customer,
+            "ledger_entries": ledger[:200],
+            "payments": payments[:200],
+            "credit_notes": credits[:100],
+            "balance": customer.ledger_balance,
+            "payment_methods": Payment.Method.choices,
+            "is_manager": is_manager(request.user),
+            "customer_orders": customer_orders[:100],
+        },
+    )
+
+
+@login_required
+@active_branch_required
+@require_POST
+def customer_add_payment(request, customer_id: int):
+    customer = get_object_or_404(Customer, id=customer_id)
+    if _blocked_by_view_only_acl(request.user, Payment):
+        return HttpResponseForbidden("Your account is view-only for payment actions.")
+    amount = _parse_decimal(request.POST.get("amount"), Decimal("0.00"))
+    if amount <= 0:
+        messages.error(request, "Payment amount must be greater than zero.")
+        return redirect("customer_profile", customer_id=customer.id)
+    method = (request.POST.get("method") or Payment.Method.CASH).strip().lower()
+    if method not in Payment.Method.values:
+        method = Payment.Method.CASH
+    order = Order.objects.filter(id=request.POST.get("order_id"), customer=customer).first()
+    if order and not _user_has_branch_access(request.user, order.branch):
+        return HttpResponseForbidden("You cannot register payment for this order.")
+    payment = Payment.objects.create(
+        customer=customer,
+        branch=request.active_branch,
+        method=method,
+        amount=amount,
+        reference=(request.POST.get("reference") or "").strip(),
+        order=order,
+        created_by=request.user,
+    )
+    CustomerLedgerEntry.objects.create(
+        customer=customer,
+        order=order,
+        entry_type=CustomerLedgerEntry.EntryType.PAYMENT,
+        amount=payment.amount,
+        created_by=request.user,
+        notes=f"Manual payment ({payment.get_method_display()})",
+    )
+    log_audit_event(
+        actor=request.user,
+        action="payment.create",
+        reason="customer_payment",
+        object_type="Payment",
+        object_id=payment.id,
+        branch=payment.branch,
+        before={},
+        after={"customer_id": customer.id, "amount": str(payment.amount), "method": payment.method, "order_id": payment.order_id},
+    )
+    messages.success(request, "Payment recorded.")
+    return redirect("customer_profile", customer_id=customer.id)
+
+
+@login_required
+@manager_required
+@active_branch_required
+@require_POST
+def credit_note_create(request, order_id: int):
+    if _blocked_by_view_only_acl(request.user, CreditNote):
+        return HttpResponseForbidden("Your account is view-only for credit note actions.")
+    order = get_object_or_404(Order.objects.select_related("customer", "branch"), id=order_id)
+    if not _user_has_branch_access(request.user, order.branch):
+        return HttpResponseForbidden("You do not have access to this order.")
+    if order.branch_id != request.active_branch.id:
+        messages.error(request, "Active branch must match order branch.")
+        return redirect("order_list")
+    invoice = TaxInvoice.objects.filter(order=order).first()
+    if not invoice:
+        messages.error(request, "Order has no tax invoice yet.")
+        return redirect("order_list")
+
+    reason = (request.POST.get("reason") or "").strip()
+    if not reason:
+        messages.error(request, "Credit note reason is required.")
+        return redirect("order_list")
+    return_to_stock_default = (request.POST.get("return_to_stock") or "") in {"1", "true", "on"}
+
+    sale_rows = list(order.items.select_related("part", "branch"))
+    selected_sale_ids = request.POST.getlist("sale_id")
+    if not selected_sale_ids:
+        selected_sale_ids = [str(sale.id) for sale in sale_rows]
+    selected_set = {int(value) for value in selected_sale_ids if str(value).isdigit()}
+    line_inputs = []
+    for sale in sale_rows:
+        if sale.id not in selected_set:
+            continue
+        qty_key = f"qty_returned_{sale.id}"
+        try:
+            qty_returned = int(request.POST.get(qty_key) or sale.quantity)
+        except (TypeError, ValueError):
+            qty_returned = sale.quantity
+        qty_returned = max(min(qty_returned, int(sale.quantity or 0)), 0)
+        if qty_returned <= 0 or not sale.part_id:
+            continue
+        line_return_flag = (request.POST.get(f"return_to_stock_{sale.id}") or "").strip()
+        line_return_to_stock = return_to_stock_default if not line_return_flag else line_return_flag in {"1", "true", "on"}
+        line_inputs.append(
+            {
+                "sale": sale,
+                "qty": qty_returned,
+                "return_to_stock": line_return_to_stock,
+                "line_reason": (request.POST.get(f"line_reason_{sale.id}") or reason).strip(),
+            }
+        )
+    if not line_inputs:
+        messages.error(request, "At least one return line is required.")
+        return redirect("order_list")
+
+    with transaction.atomic():
+        credit_note = CreditNote.objects.create(
+            invoice=invoice,
+            branch=order.branch,
+            order=order,
+            customer=order.customer,
+            reason=reason,
+            return_to_stock=return_to_stock_default,
+            created_by=request.user,
+            state="posted",
+        )
+        total_before = Decimal("0.00")
+        total_vat = Decimal("0.00")
+        for payload in line_inputs:
+            sale = payload["sale"]
+            subtotal = _quantize_money(Decimal(payload["qty"]) * Decimal(sale.price_at_sale))
+            vat_value = _quantize_money(subtotal * VAT_RATE)
+            CreditNoteLine.objects.create(
+                credit_note=credit_note,
+                sale=sale,
+                part=sale.part,
+                quantity=payload["qty"],
+                unit_price=sale.price_at_sale,
+                vat_rate=Decimal("15.00"),
+                reason=payload["line_reason"],
+                return_to_stock=payload["return_to_stock"],
+            )
+            total_before += subtotal
+            total_vat += vat_value
+            if payload["return_to_stock"]:
+                stock_before = int(
+                    Stock.objects.filter(part=sale.part, branch=order.branch).values_list("quantity", flat=True).first()
+                    or 0
+                )
+                add_stock_to_location(
+                    part=sale.part,
+                    branch=order.branch,
+                    quantity=payload["qty"],
+                    reason=reason,
+                    actor=request.user,
+                    action="credit_note_return_in",
+                )
+                stock_after = int(
+                    Stock.objects.filter(part=sale.part, branch=order.branch).values_list("quantity", flat=True).first()
+                    or 0
+                )
+                log_audit_event(
+                    actor=request.user,
+                    action="stock.adjustment",
+                    reason=reason,
+                    object_type="Stock",
+                    object_id=f"{sale.part_id}:{order.branch_id}",
+                    branch=order.branch,
+                    before={"quantity": stock_before, "sale_id": sale.id, "reason": "credit_note_return"},
+                    after={"quantity": stock_after, "sale_id": sale.id, "reason": "credit_note_return"},
+                )
+            if int(payload["qty"]) >= int(sale.quantity or 0):
+                sale.is_refunded = True
+                sale.save(update_fields=["is_refunded"])
+        credit_note.amount_before_vat = _quantize_money(total_before)
+        credit_note.vat_amount = _quantize_money(total_vat)
+        credit_note.amount_after_vat = _quantize_money(total_before + total_vat)
+        credit_note.save(update_fields=["amount_before_vat", "vat_amount", "amount_after_vat"])
+
+        if order.customer_id:
+            CustomerLedgerEntry.objects.create(
+                customer=order.customer,
+                order=order,
+                entry_type=CustomerLedgerEntry.EntryType.CREDIT_NOTE,
+                amount=credit_note.amount_after_vat,
+                created_by=request.user,
+                notes=f"Credit note #{credit_note.id}",
+            )
+        log_audit_event(
+            actor=request.user,
+            action="credit_note.create",
+            reason=reason,
+            object_type="CreditNote",
+            object_id=credit_note.id,
+            branch=credit_note.branch,
+            before={},
+            after={
+                "order_id": order.id,
+                "customer_id": order.customer_id,
+                "amount_after_vat": str(credit_note.amount_after_vat),
+                "line_count": len(line_inputs),
+            },
+        )
+    messages.success(request, f"Credit note #{credit_note.id} created.")
+    if order.customer_id:
+        return redirect("customer_profile", customer_id=order.customer_id)
+    return redirect("order_list")
+
+
+@login_required
+def part_insight(request, part_id: int):
+    part = get_object_or_404(Part, id=part_id)
+    branch_scope = _accessible_branches(request.user)
+    branch_ids = [branch.id for branch in branch_scope]
+    stock_rows = (
+        Stock.objects.select_related("branch")
+        .filter(part=part, branch_id__in=branch_ids)
+        .order_by("branch__name")
+    )
+    sales_rows = (
+        Sale.objects.select_related("order", "branch", "seller")
+        .filter(part=part, branch_id__in=branch_ids)
+        .order_by("-date_sold")[:10]
+    )
+    transfer_rows = (
+        TransferRequest.objects.select_related("source_branch", "destination_branch", "requested_by")
+        .filter(part=part)
+        .filter(Q(source_branch_id__in=branch_ids) | Q(destination_branch_id__in=branch_ids))
+        .order_by("-created_at")[:10]
+    )
+    receipt_rows = (
+        PurchaseReceiptLine.objects.select_related("receipt", "receipt__po", "receipt__branch")
+        .filter(po_line__part=part, receipt__branch_id__in=branch_ids)
+        .order_by("-receipt__received_at")[:10]
+    )
+    recent_barcodes = part.barcodes.order_by("-created_at")[:15]
+    return render(
+        request,
+        "inventory/part_insight.html",
+        {
+            "part": part,
+            "stock_rows": stock_rows,
+            "sales_rows": sales_rows,
+            "transfer_rows": transfer_rows,
+            "receipt_rows": receipt_rows,
+            "recent_barcodes": recent_barcodes,
+        },
+    )
+
+
+@login_required
+@manager_required
+def barcode_unmatched(request):
+    scan_code = (request.GET.get("code") or request.POST.get("scan_code") or "").strip()
+    if request.method == "POST":
+        if _blocked_by_view_only_acl(request.user, PartBarcode):
+            return HttpResponseForbidden("Your account is view-only for barcode updates.")
+        part = Part.objects.filter(id=request.POST.get("part_id")).first()
+        if not scan_code:
+            messages.error(request, "Barcode is required.")
+            return redirect("barcode_unmatched")
+        if not part:
+            messages.error(request, "Select a part.")
+            return redirect(f"{reverse('barcode_unmatched')}?code={scan_code}")
+        existing = PartBarcode.objects.filter(barcode__iexact=scan_code).first()
+        if existing and existing.part_id != part.id:
+            messages.error(request, f"Barcode is already linked to {existing.part.part_number}.")
+            return redirect(f"{reverse('barcode_unmatched')}?code={scan_code}")
+        obj, created = PartBarcode.objects.get_or_create(
+            barcode=scan_code,
+            defaults={
+                "part": part,
+                "note": (request.POST.get("note") or "").strip(),
+            },
+        )
+        if not created and obj.part_id != part.id:
+            obj.part = part
+            obj.note = (request.POST.get("note") or "").strip()
+            obj.save(update_fields=["part", "note"])
+        log_audit_event(
+            actor=request.user,
+            action="part_barcode.link",
+            reason="barcode_linked",
+            object_type="PartBarcode",
+            object_id=obj.id,
+            branch=_audit_branch_for_user(request.user),
+            before={},
+            after={"part_id": obj.part_id, "barcode": obj.barcode},
+        )
+        messages.success(request, f"Barcode linked to {part.part_number}.")
+        return redirect("part_insight", part_id=part.id)
+
+    return render(
+        request,
+        "inventory/barcode_unmatched.html",
+        {
+            "scan_code": scan_code,
+            "parts": Part.objects.order_by("part_number")[:500],
+        },
+    )
+
+
+def _can_approve_cycle_count(user) -> bool:
+    if is_admin_user(user) or is_manager(user):
+        return True
+    return user.username.strip().casefold() == "dbp01"
+
+
+@login_required
+@manager_required
+@active_branch_required
+def cycle_count_list(request):
+    sessions = CycleCountSession.objects.select_related("branch", "location", "created_by", "approved_by").order_by("-started_at")
+    if not is_admin_user(request.user):
+        sessions = sessions.filter(branch=request.active_branch)
+
+    if request.method == "POST":
+        if _blocked_by_view_only_acl(request.user, Stock):
+            return HttpResponseForbidden("Your account is view-only for cycle count actions.")
+        branch = request.active_branch
+        if is_admin_user(request.user):
+            selected = _branch_in_scope_or_none(request.user, request.POST.get("branch_id"))
+            if selected:
+                branch = selected
+        location = Location.objects.filter(id=request.POST.get("location_id"), branch=branch).first()
+        session = CycleCountSession.objects.create(
+            branch=branch,
+            location=location,
+            created_by=request.user,
+            notes=(request.POST.get("notes") or "").strip(),
+            status=CycleCountSession.Status.DRAFT,
+        )
+        log_audit_event(
+            actor=request.user,
+            action="cycle_count.create",
+            reason="cycle_count_started",
+            object_type="CycleCountSession",
+            object_id=session.id,
+            branch=session.branch,
+            before={},
+            after={"status": session.status, "location_id": session.location_id},
+        )
+        messages.success(request, f"Cycle count session #{session.id} created.")
+        return redirect("cycle_count_detail", session_id=session.id)
+
+    page_obj = Paginator(sessions, 30).get_page(request.GET.get("page"))
+    return render(
+        request,
+        "inventory/cycle_count_list.html",
+        {
+            "sessions": page_obj.object_list,
+            "page_obj": page_obj,
+            "branches": _accessible_branches(request.user),
+            "locations": Location.objects.filter(branch=request.active_branch).order_by("code"),
+            "active_branch": request.active_branch,
+        },
+    )
+
+
+@login_required
+@manager_required
+@active_branch_required
+def cycle_count_detail(request, session_id: int):
+    session = get_object_or_404(
+        CycleCountSession.objects.select_related("branch", "location", "created_by", "approved_by").prefetch_related("lines__part"),
+        id=session_id,
+    )
+    if not _user_has_branch_access(request.user, session.branch):
+        return HttpResponseForbidden("You do not have access to this cycle count session.")
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip().lower()
+
+        if action == "add_line":
+            if _blocked_by_view_only_acl(request.user, Stock):
+                return HttpResponseForbidden("Your account is view-only for cycle count actions.")
+            if session.status in {CycleCountSession.Status.SUBMITTED, CycleCountSession.Status.APPROVED, CycleCountSession.Status.REJECTED}:
+                messages.error(request, "This session is locked.")
+                return redirect("cycle_count_detail", session_id=session.id)
+            part = Part.objects.filter(id=request.POST.get("part_id")).first()
+            if not part:
+                scan_code = (request.POST.get("scan_code") or "").strip()
+                if scan_code:
+                    part = (
+                        Part.objects.filter(
+                            Q(part_number__iexact=scan_code)
+                            | Q(barcode__iexact=scan_code)
+                            | Q(sku__iexact=scan_code)
+                            | Q(manufacturer_part_number__iexact=scan_code)
+                            | Q(barcodes__barcode__iexact=scan_code)
+                        )
+                        .distinct()
+                        .first()
+                    )
+            if not part:
+                messages.error(request, "Part or valid scan code is required.")
+                return redirect("cycle_count_detail", session_id=session.id)
+            try:
+                counted_qty = int(request.POST.get("counted_qty") or 0)
+            except (TypeError, ValueError):
+                counted_qty = 0
+            line, _ = CycleCountLine.objects.get_or_create(session=session, part=part, defaults={"counted_qty": counted_qty})
+            if line.counted_qty != counted_qty:
+                line.counted_qty = counted_qty
+                line.save(update_fields=["counted_qty"])
+            if session.status == CycleCountSession.Status.DRAFT:
+                session.status = CycleCountSession.Status.IN_PROGRESS
+                session.save(update_fields=["status"])
+            messages.success(request, "Count line saved.")
+            return redirect("cycle_count_detail", session_id=session.id)
+
+        if action == "submit":
+            if _blocked_by_view_only_acl(request.user, Stock):
+                return HttpResponseForbidden("Your account is view-only for cycle count actions.")
+            if session.status not in {CycleCountSession.Status.DRAFT, CycleCountSession.Status.IN_PROGRESS}:
+                messages.error(request, "Only draft/in-progress sessions can be submitted.")
+                return redirect("cycle_count_detail", session_id=session.id)
+            with transaction.atomic():
+                locked_session = CycleCountSession.objects.select_for_update().get(id=session.id)
+                lines = list(CycleCountLine.objects.select_for_update().filter(session=locked_session).select_related("part"))
+                if not lines:
+                    messages.error(request, "Add at least one line before submitting.")
+                    return redirect("cycle_count_detail", session_id=session.id)
+                for line in lines:
+                    if locked_session.location_id:
+                        snapshot = int(
+                            StockLocation.objects.filter(
+                                part=line.part,
+                                branch=locked_session.branch,
+                                location=locked_session.location,
+                            ).values_list("quantity", flat=True).first()
+                            or 0
+                        )
+                    else:
+                        snapshot = int(
+                            Stock.objects.filter(part=line.part, branch=locked_session.branch).values_list("quantity", flat=True).first()
+                            or 0
+                        )
+                    line.system_qty_snapshot = snapshot
+                    line.save(update_fields=["system_qty_snapshot"])
+                locked_session.status = CycleCountSession.Status.SUBMITTED
+                locked_session.submitted_at = timezone.now()
+                locked_session.save(update_fields=["status", "submitted_at"])
+                log_audit_event(
+                    actor=request.user,
+                    action="cycle_count.submit",
+                    reason="cycle_count_submitted",
+                    object_type="CycleCountSession",
+                    object_id=locked_session.id,
+                    branch=locked_session.branch,
+                    before={"status": session.status},
+                    after={"status": locked_session.status},
+                )
+            messages.success(request, "Cycle count submitted.")
+            return redirect("cycle_count_detail", session_id=session.id)
+
+        if action in {"approve", "reject"}:
+            if not _can_approve_cycle_count(request.user):
+                return HttpResponseForbidden("Only Manager/Admin/DBP01 can approve cycle counts.")
+            if _blocked_by_view_only_acl(request.user, Stock):
+                return HttpResponseForbidden("Your account is view-only for stock actions.")
+            if session.status != CycleCountSession.Status.SUBMITTED:
+                messages.error(request, "Only submitted sessions can be approved/rejected.")
+                return redirect("cycle_count_detail", session_id=session.id)
+
+            with transaction.atomic():
+                locked_session = CycleCountSession.objects.select_for_update().get(id=session.id)
+                if action == "reject":
+                    locked_session.status = CycleCountSession.Status.REJECTED
+                    locked_session.save(update_fields=["status"])
+                    log_audit_event(
+                        actor=request.user,
+                        action="cycle_count.reject",
+                        reason="cycle_count_rejected",
+                        object_type="CycleCountSession",
+                        object_id=locked_session.id,
+                        branch=locked_session.branch,
+                        before={"status": CycleCountSession.Status.SUBMITTED},
+                        after={"status": CycleCountSession.Status.REJECTED},
+                    )
+                    messages.info(request, "Cycle count rejected.")
+                    return redirect("cycle_count_detail", session_id=session.id)
+
+                lines = list(CycleCountLine.objects.select_for_update().filter(session=locked_session).select_related("part"))
+                for line in lines:
+                    variance = line.variance
+                    if variance == 0:
+                        continue
+                    if variance > 0:
+                        add_stock_to_location(
+                            part=line.part,
+                            branch=locked_session.branch,
+                            quantity=variance,
+                            reason=f"cycle_count_session_{locked_session.id}",
+                            actor=request.user,
+                            location=locked_session.location,
+                            action="cycle_count_adjust_in",
+                        )
+                    else:
+                        remove_stock_from_locations(
+                            part=line.part,
+                            branch=locked_session.branch,
+                            quantity=abs(variance),
+                            reason=f"cycle_count_session_{locked_session.id}",
+                            actor=request.user,
+                            from_location=locked_session.location,
+                            action="cycle_count_adjust_out",
+                        )
+                    log_audit_event(
+                        actor=request.user,
+                        action="cycle_count.adjust",
+                        reason=f"cycle_count_session_{locked_session.id}",
+                        object_type="CycleCountLine",
+                        object_id=line.id,
+                        branch=locked_session.branch,
+                        before={
+                            "system_qty_snapshot": line.system_qty_snapshot,
+                            "counted_qty": line.counted_qty,
+                        },
+                        after={"variance": variance},
+                    )
+                locked_session.status = CycleCountSession.Status.APPROVED
+                locked_session.approved_by = request.user
+                locked_session.approved_at = timezone.now()
+                locked_session.save(update_fields=["status", "approved_by", "approved_at"])
+                log_audit_event(
+                    actor=request.user,
+                    action="cycle_count.approve",
+                    reason="cycle_count_approved",
+                    object_type="CycleCountSession",
+                    object_id=locked_session.id,
+                    branch=locked_session.branch,
+                    before={"status": CycleCountSession.Status.SUBMITTED},
+                    after={"status": CycleCountSession.Status.APPROVED, "approved_by": request.user.username},
+                )
+            messages.success(request, "Cycle count approved and adjustments applied.")
+            return redirect("cycle_count_detail", session_id=session.id)
+
+    lines = session.lines.select_related("part").order_by("part__part_number")
+    return render(
+        request,
+        "inventory/cycle_count_detail.html",
+        {
+            "session": session,
+            "lines": lines,
+            "parts": Part.objects.order_by("part_number")[:500],
+            "can_approve": _can_approve_cycle_count(request.user),
+        },
+    )
 
 
 @login_required
@@ -1103,10 +2922,43 @@ def transfer_list(request):
 
 
 @login_required
+def transfer_pick_list(request, transfer_id: int):
+    transfer = get_object_or_404(
+        TransferRequest.objects.select_related(
+            "part",
+            "source_branch",
+            "destination_branch",
+            "requested_by",
+        ),
+        id=transfer_id,
+    )
+    if not is_admin_user(request.user):
+        transfer_scope = _transfer_scope_for_user(TransferRequest.objects.filter(id=transfer_id), request.user)
+        if not transfer_scope.exists():
+            return HttpResponseForbidden("You do not have access to this transfer.")
+    location_hints = list(
+        StockLocation.objects.select_related("location")
+        .filter(part=transfer.part, branch=transfer.source_branch, quantity__gt=0)
+        .order_by("-quantity", "location__code")
+    )
+    return render(
+        request,
+        "inventory/transfer_pick_list.html",
+        {
+            "transfer": transfer,
+            "location_hints": location_hints,
+            "print_mode": request.GET.get("print") == "1",
+        },
+    )
+
+
+@login_required
 @active_branch_required
 def transfer_create(request):
     if not _can_request_transfer(request.user):
         return HttpResponseForbidden("You do not have permission to create transfer requests.")
+    if _blocked_by_view_only_acl(request.user, TransferRequest):
+        return HttpResponseForbidden("Your account is view-only for transfer actions.")
 
     is_admin = is_admin_user(request.user)
     allowed_branches = Branch.objects.all().order_by("name")
@@ -1202,6 +3054,8 @@ def transfer_create_from_stock(request, stock_id: int):
     is_admin = is_admin_user(request.user)
     if not _can_request_transfer(request.user):
         return HttpResponseForbidden("You do not have permission to create transfer requests.")
+    if _blocked_by_view_only_acl(request.user, TransferRequest):
+        return HttpResponseForbidden("Your account is view-only for transfer actions.")
 
     if not is_admin and not profile.branch:
         messages.error(request, "Your account has no branch assigned.")
@@ -1313,6 +3167,8 @@ def transfer_approve(request, transfer_id: int):
     )
     if not _can_approve_transfer(request.user, transfer):
         return HttpResponseForbidden("You cannot approve this transfer.")
+    if _blocked_by_view_only_acl(request.user, TransferRequest):
+        return HttpResponseForbidden("Your account is view-only for transfer actions.")
     if transfer.source_branch_id != request.active_branch.id:
         messages.error(request, "The transfer source branch must match the active branch.")
         return redirect(_safe_next_url(request, "transfer_approvals"))
@@ -1400,6 +3256,8 @@ def transfer_reject(request, transfer_id: int):
     transfer = get_object_or_404(TransferRequest, id=transfer_id)
     if not _can_approve_transfer(request.user, transfer):
         return HttpResponseForbidden("You cannot reject this transfer.")
+    if _blocked_by_view_only_acl(request.user, TransferRequest):
+        return HttpResponseForbidden("Your account is view-only for transfer actions.")
     if transfer.source_branch_id != request.active_branch.id:
         messages.error(request, "The transfer source branch must match the active branch.")
         return redirect(_safe_next_url(request, "transfer_approvals"))
@@ -1489,6 +3347,8 @@ def transfer_mark_picked_up(request, transfer_id: int):
     user_branch = _user_branch(request.user)
     if not is_admin_user(request.user) and (not user_branch or user_branch.id != transfer.source_branch_id):
         return HttpResponseForbidden("You cannot mark pickup for this transfer.")
+    if _blocked_by_view_only_acl(request.user, TransferRequest):
+        return HttpResponseForbidden("Your account is view-only for transfer actions.")
     reason = (request.POST.get("reason") or "").strip()
     if not reason:
         messages.error(request, "Reason is required for pickup confirmation.")
@@ -1533,6 +3393,8 @@ def transfer_mark_delivered(request, transfer_id: int):
 
     if not is_admin_user(request.user) and transfer.driver_id != request.user.id:
         return HttpResponseForbidden("Only assigned driver can mark delivery.")
+    if _blocked_by_view_only_acl(request.user, TransferRequest):
+        return HttpResponseForbidden("Your account is view-only for transfer actions.")
     reason = (request.POST.get("reason") or "").strip()
     if not reason:
         messages.error(request, "Reason is required for delivery confirmation.")
@@ -1569,11 +3431,164 @@ def transfer_mark_delivered(request, transfer_id: int):
     return redirect(_safe_next_url(request, "transfer_driver_tasks"))
 
 
+def _receive_transfer_quantity(
+    *,
+    request,
+    transfer_id: int,
+    quantity: int,
+    reason: str,
+    allow_over_receive: bool = False,
+) -> tuple[TransferRequest, int]:
+    qty = int(quantity or 0)
+    if qty <= 0:
+        raise ValidationError("Receive quantity must be greater than zero.")
+
+    locked_transfer = (
+        TransferRequest.objects.select_for_update()
+        .select_related("source_branch", "destination_branch", "part")
+        .filter(id=transfer_id)
+        .first()
+    )
+    if not locked_transfer:
+        raise ValidationError("Transfer not found.")
+    if locked_transfer.status not in {TransferRequest.Status.DELIVERED, TransferRequest.Status.RECEIVED}:
+        raise ValidationError("Transfer is not ready for receiving.")
+    if locked_transfer.status == TransferRequest.Status.RECEIVED:
+        raise ValidationError("Transfer is already fully received.")
+
+    remaining_before = locked_transfer.remaining_quantity
+    if remaining_before <= 0:
+        raise ValidationError("No remaining quantity to receive.")
+
+    if qty > remaining_before and not allow_over_receive:
+        raise ValidationError(f"Cannot receive more than remaining quantity ({remaining_before}).")
+
+    moved_qty = qty if allow_over_receive else min(qty, remaining_before)
+    source_stock = (
+        Stock.objects.select_for_update()
+        .filter(part=locked_transfer.part, branch=locked_transfer.source_branch)
+        .first()
+    )
+    if not source_stock:
+        raise ValidationError("Source stock record is missing.")
+    if source_stock.quantity < moved_qty:
+        raise ValidationError(f"Source branch stock is below requested receive quantity ({source_stock.quantity} available).")
+
+    destination_stock, _ = Stock.objects.select_for_update().get_or_create(
+        part=locked_transfer.part,
+        branch=locked_transfer.destination_branch,
+        defaults={"quantity": 0},
+    )
+
+    source_before = source_stock.quantity
+    destination_before = destination_stock.quantity
+    transfer_before = {
+        "status": locked_transfer.status,
+        "reserved_quantity": locked_transfer.reserved_quantity,
+        "received_quantity": locked_transfer.received_quantity,
+    }
+
+    ensure_stock_locations_seeded_from_branch_stock(source_stock)
+    remove_stock_from_locations(
+        part=locked_transfer.part,
+        branch=locked_transfer.source_branch,
+        quantity=moved_qty,
+        reason=reason,
+        actor=request.user,
+        action="transfer_out",
+    )
+    add_stock_to_location(
+        part=locked_transfer.part,
+        branch=locked_transfer.destination_branch,
+        quantity=moved_qty,
+        reason=reason,
+        actor=request.user,
+        action="transfer_in",
+    )
+    source_stock.refresh_from_db(fields=["quantity"])
+    destination_stock.refresh_from_db(fields=["quantity"])
+
+    locked_transfer.received_quantity = int(locked_transfer.received_quantity or 0) + moved_qty
+    if locked_transfer.received_quantity >= int(locked_transfer.quantity or 0):
+        locked_transfer.status = TransferRequest.Status.RECEIVED
+        locked_transfer.reserved_quantity = 0
+        locked_transfer.received_by = request.user
+        locked_transfer.received_at = timezone.now()
+        update_fields = ["received_quantity", "status", "reserved_quantity", "received_by", "received_at"]
+    else:
+        locked_transfer.status = TransferRequest.Status.DELIVERED
+        locked_transfer.reserved_quantity = max(int(locked_transfer.quantity or 0) - int(locked_transfer.received_quantity or 0), 0)
+        update_fields = ["received_quantity", "status", "reserved_quantity"]
+    locked_transfer.save(update_fields=update_fields)
+
+    log_audit_event(
+        actor=request.user,
+        action="stock.adjustment",
+        reason=reason,
+        object_type="Stock",
+        object_id=source_stock.id,
+        branch=locked_transfer.source_branch,
+        before={
+            "quantity": source_before,
+            "part_number": locked_transfer.part.part_number,
+            "reason": "transfer_receive_out",
+            "transfer_id": locked_transfer.id,
+            "receive_qty": moved_qty,
+        },
+        after={
+            "quantity": source_stock.quantity,
+            "part_number": locked_transfer.part.part_number,
+            "reason": "transfer_receive_out",
+            "transfer_id": locked_transfer.id,
+            "receive_qty": moved_qty,
+        },
+    )
+    log_audit_event(
+        actor=request.user,
+        action="stock.adjustment",
+        reason=reason,
+        object_type="Stock",
+        object_id=destination_stock.id,
+        branch=locked_transfer.destination_branch,
+        before={
+            "quantity": destination_before,
+            "part_number": locked_transfer.part.part_number,
+            "reason": "transfer_receive_in",
+            "transfer_id": locked_transfer.id,
+            "receive_qty": moved_qty,
+        },
+        after={
+            "quantity": destination_stock.quantity,
+            "part_number": locked_transfer.part.part_number,
+            "reason": "transfer_receive_in",
+            "transfer_id": locked_transfer.id,
+            "receive_qty": moved_qty,
+        },
+    )
+    log_audit_event(
+        actor=request.user,
+        action="transfer.receive",
+        reason=reason,
+        object_type="TransferRequest",
+        object_id=locked_transfer.id,
+        branch=locked_transfer.destination_branch,
+        before=transfer_before,
+        after={
+            "status": locked_transfer.status,
+            "reserved_quantity": locked_transfer.reserved_quantity,
+            "received_quantity": locked_transfer.received_quantity,
+            "received_by": request.user.username,
+            "receive_qty": moved_qty,
+        },
+    )
+    return locked_transfer, moved_qty
+
+
 @login_required
 def transfer_receive_list(request):
     delivered_transfers = (
         TransferRequest.objects.select_related("part", "source_branch", "destination_branch", "driver")
-        .filter(status=TransferRequest.Status.DELIVERED)
+        .filter(status__in=[TransferRequest.Status.DELIVERED, TransferRequest.Status.RECEIVED])
         .order_by("created_at")
     )
 
@@ -1606,6 +3621,8 @@ def transfer_confirm_receive(request, transfer_id: int):
     user_branch = _user_branch(request.user)
     if not is_admin_user(request.user) and (not user_branch or user_branch.id != transfer.destination_branch_id):
         return HttpResponseForbidden("You cannot confirm receiving for this transfer.")
+    if _blocked_by_view_only_acl(request.user, TransferRequest) or _blocked_by_view_only_acl(request.user, Stock):
+        return HttpResponseForbidden("Your account is view-only for receiving actions.")
     if transfer.destination_branch_id != request.active_branch.id:
         messages.error(request, "The transfer destination branch must match the active branch.")
         return redirect(_safe_next_url(request, "transfer_receive_list"))
@@ -1613,133 +3630,108 @@ def transfer_confirm_receive(request, transfer_id: int):
     if not reason:
         messages.error(request, "Reason is required to confirm receiving.")
         return redirect(_safe_next_url(request, "transfer_receive_list"))
+    qty_raw = (request.POST.get("receive_qty") or "").strip()
+    try:
+        requested_qty = int(qty_raw) if qty_raw else transfer.remaining_quantity
+    except (TypeError, ValueError):
+        requested_qty = transfer.remaining_quantity
+    manager_override = (request.POST.get("manager_override") or "").strip() in {"1", "true", "on"}
+    allow_over_receive = bool(manager_override and is_manager(request.user))
 
-    with transaction.atomic():
-        locked_transfer = (
-            TransferRequest.objects.select_for_update()
-            .select_related("source_branch", "destination_branch", "part")
-            .filter(id=transfer_id)
-            .first()
-        )
-        if not locked_transfer:
-            messages.error(request, "Transfer not found.")
-            return redirect("transfer_receive_list")
-
-        if locked_transfer.status != TransferRequest.Status.DELIVERED:
-            messages.warning(request, "Transfer is not ready for receiving confirmation.")
-            return redirect(_safe_next_url(request, "transfer_receive_list"))
-
-        source_stock = (
-            Stock.objects.select_for_update()
-            .filter(part=locked_transfer.part, branch=locked_transfer.source_branch)
-            .first()
-        )
-        if not source_stock:
-            messages.error(request, "Source stock record is missing.")
-            return redirect(_safe_next_url(request, "transfer_receive_list"))
-
-        if source_stock.quantity < locked_transfer.quantity:
-            messages.error(
-                request,
-                f"Source branch stock is below transfer quantity ({source_stock.quantity} available).",
+    try:
+        with transaction.atomic():
+            locked_transfer, moved_qty = _receive_transfer_quantity(
+                request=request,
+                transfer_id=transfer_id,
+                quantity=requested_qty,
+                reason=reason,
+                allow_over_receive=allow_over_receive,
             )
-            return redirect(_safe_next_url(request, "transfer_receive_list"))
+    except (ValidationError, ValueError) as exc:
+        messages.error(request, str(exc))
+        return redirect(_safe_next_url(request, "transfer_receive_list"))
 
-        destination_stock, _ = Stock.objects.select_for_update().get_or_create(
-            part=locked_transfer.part,
-            branch=locked_transfer.destination_branch,
-            defaults={"quantity": 0},
+    if locked_transfer.status == TransferRequest.Status.RECEIVED:
+        messages.success(request, f"Transfer fully received ({moved_qty} item(s) moved).")
+    else:
+        messages.info(
+            request,
+            f"Partial receive saved ({moved_qty} moved). Remaining: {locked_transfer.remaining_quantity}.",
         )
+    return redirect(_safe_next_url(request, "transfer_receive_list"))
 
-        source_before = source_stock.quantity
-        destination_before = destination_stock.quantity
-        transfer_before = {
-            "status": locked_transfer.status,
-            "reserved_quantity": locked_transfer.reserved_quantity,
-        }
 
-        ensure_stock_locations_seeded_from_branch_stock(source_stock)
-        remove_stock_from_locations(
-            part=locked_transfer.part,
-            branch=locked_transfer.source_branch,
-            quantity=locked_transfer.quantity,
-            reason=reason,
-            actor=request.user,
-            action="transfer_out",
-        )
-        add_stock_to_location(
-            part=locked_transfer.part,
-            branch=locked_transfer.destination_branch,
-            quantity=locked_transfer.quantity,
-            reason=reason,
-            actor=request.user,
-            action="transfer_in",
-        )
-        source_stock.refresh_from_db(fields=["quantity"])
-        destination_stock.refresh_from_db(fields=["quantity"])
+def _transfer_scan_matches_part(transfer: TransferRequest, token: str) -> bool:
+    query = (token or "").strip()
+    if not query:
+        return False
+    part = transfer.part
+    if not part:
+        return False
+    direct_codes = {
+        (part.part_number or "").strip().casefold(),
+        (part.barcode or "").strip().casefold(),
+        (part.sku or "").strip().casefold(),
+        (part.manufacturer_part_number or "").strip().casefold(),
+    }
+    normalized = query.casefold()
+    if normalized in direct_codes:
+        return True
+    return PartBarcode.objects.filter(part_id=part.id, barcode__iexact=query).exists()
 
-        locked_transfer.status = TransferRequest.Status.RECEIVED
-        locked_transfer.reserved_quantity = 0
-        locked_transfer.received_by = request.user
-        locked_transfer.received_at = timezone.now()
-        locked_transfer.save(update_fields=["status", "reserved_quantity", "received_by", "received_at"])
 
-        log_audit_event(
-            actor=request.user,
-            action="stock.adjustment",
-            reason=reason,
-            object_type="Stock",
-            object_id=source_stock.id,
-            branch=locked_transfer.source_branch,
-            before={
-                "quantity": source_before,
-                "part_number": locked_transfer.part.part_number,
-                "reason": "transfer_receive_out",
-                "transfer_id": locked_transfer.id,
-            },
-            after={
-                "quantity": source_stock.quantity,
-                "part_number": locked_transfer.part.part_number,
-                "reason": "transfer_receive_out",
-                "transfer_id": locked_transfer.id,
-            },
-        )
-        log_audit_event(
-            actor=request.user,
-            action="stock.adjustment",
-            reason=reason,
-            object_type="Stock",
-            object_id=destination_stock.id,
-            branch=locked_transfer.destination_branch,
-            before={
-                "quantity": destination_before,
-                "part_number": locked_transfer.part.part_number,
-                "reason": "transfer_receive_in",
-                "transfer_id": locked_transfer.id,
-            },
-            after={
-                "quantity": destination_stock.quantity,
-                "part_number": locked_transfer.part.part_number,
-                "reason": "transfer_receive_in",
-                "transfer_id": locked_transfer.id,
-            },
-        )
-        log_audit_event(
-            actor=request.user,
-            action="transfer.receive",
-            reason=reason,
-            object_type="TransferRequest",
-            object_id=locked_transfer.id,
-            branch=locked_transfer.destination_branch,
-            before=transfer_before,
-            after={
-                "status": locked_transfer.status,
-                "reserved_quantity": locked_transfer.reserved_quantity,
-                "received_by": request.user.username,
-            },
-        )
+@login_required
+@require_POST
+@active_branch_required
+def transfer_receive_scan(request, transfer_id: int):
+    transfer = get_object_or_404(
+        TransferRequest.objects.select_related("source_branch", "destination_branch", "part"),
+        id=transfer_id,
+    )
+    user_branch = _user_branch(request.user)
+    if not is_admin_user(request.user) and (not user_branch or user_branch.id != transfer.destination_branch_id):
+        return HttpResponseForbidden("You cannot receive this transfer.")
+    if _blocked_by_view_only_acl(request.user, TransferRequest) or _blocked_by_view_only_acl(request.user, Stock):
+        return HttpResponseForbidden("Your account is view-only for receiving actions.")
+    if transfer.destination_branch_id != request.active_branch.id:
+        messages.error(request, "The transfer destination branch must match the active branch.")
+        return redirect(_safe_next_url(request, "transfer_receive_list"))
 
-    messages.success(request, "Transfer received and stock moved successfully.")
+    token = (request.POST.get("scan_code") or "").strip()
+    if not token:
+        messages.error(request, "Scan code is required.")
+        return redirect(_safe_next_url(request, "transfer_receive_list"))
+    if not _transfer_scan_matches_part(transfer, token):
+        messages.error(request, f"Scanned code does not match transfer part {transfer.part.part_number}.")
+        return redirect(_safe_next_url(request, "transfer_receive_list"))
+
+    qty_raw = (request.POST.get("quantity") or "1").strip()
+    try:
+        qty = int(qty_raw)
+    except (TypeError, ValueError):
+        qty = 1
+    qty = max(qty, 1)
+    reason = (request.POST.get("reason") or "").strip() or "transfer_receive_scan"
+    manager_override = (request.POST.get("manager_override") or "").strip() in {"1", "true", "on"}
+    allow_over_receive = bool(manager_override and is_manager(request.user))
+
+    try:
+        with transaction.atomic():
+            locked_transfer, moved_qty = _receive_transfer_quantity(
+                request=request,
+                transfer_id=transfer.id,
+                quantity=qty,
+                reason=reason,
+                allow_over_receive=allow_over_receive,
+            )
+    except (ValidationError, ValueError) as exc:
+        messages.error(request, str(exc))
+        return redirect(_safe_next_url(request, "transfer_receive_list"))
+
+    if locked_transfer.status == TransferRequest.Status.RECEIVED:
+        messages.success(request, f"Transfer completed by scan ({moved_qty} moved).")
+    else:
+        messages.info(request, f"Scan received {moved_qty}. Remaining: {locked_transfer.remaining_quantity}.")
     return redirect(_safe_next_url(request, "transfer_receive_list"))
 
 
@@ -1751,8 +3743,13 @@ def _scan_part_candidates(token: str, branch: Branch) -> list[Part]:
         Part.objects.filter(
             Q(barcode__iexact=query)
             | Q(part_number__iexact=query)
+            | Q(sku__iexact=query)
+            | Q(manufacturer_part_number__iexact=query)
+            | Q(barcodes__barcode__iexact=query)
             | Q(barcode__icontains=query)
             | Q(part_number__icontains=query)
+            | Q(sku__icontains=query)
+            | Q(manufacturer_part_number__icontains=query)
         )
         .filter(Q(stock__branch=branch) | Q(stock_locations__branch=branch))
         .distinct()
@@ -1936,6 +3933,8 @@ def _stock_locations_branch_url(branch_id: int) -> str:
 @active_branch_required
 def stock_scan_apply(request):
     branch = request.active_branch
+    if _blocked_by_view_only_acl(request.user, Stock):
+        return HttpResponseForbidden("Your account is view-only for stock actions.")
     action = (request.POST.get("action") or "scan").strip().lower()
     mode = (request.POST.get("mode") or "add").strip().lower()
     redirect_url = _stock_locations_branch_url(branch.id)
@@ -2147,6 +4146,9 @@ def scan_dispatch(request):
 
     part_candidates = _scan_part_candidates(token, branch)
     if not part_candidates:
+        if mode in {"info", "lookup", "receiving", "transfer_receive"}:
+            messages.warning(request, f"No part found for scan '{token}'. Link it to an existing part.")
+            return redirect(f"{reverse('barcode_unmatched')}?code={token}")
         messages.error(request, f"No part found for scan '{token}'.")
         return redirect(_safe_next_url(request, "part_search"))
     if len(part_candidates) > 1:
@@ -2198,13 +4200,7 @@ def scan_dispatch(request):
         }
         return redirect(f"{reverse('stock_locations_view')}?{urlencode(params)}")
 
-    params = {
-        "branch": branch.id,
-        "scan_part": part.id,
-        "scan_mode": "info",
-        "q": part.part_number,
-    }
-    return redirect(f"{reverse('stock_locations_view')}?{urlencode(params)}")
+    return redirect("part_insight", part_id=part.id)
 
 
 @login_required
@@ -2903,17 +4899,19 @@ def analytics_assistant(request):
     active_branch = _active_branch_for_request(request)
     history = request.session.get(ASSISTANT_CHAT_HISTORY_KEY, [])
     pending_action = request.session.get(ASSISTANT_CHAT_PENDING_KEY)
+    ai_engine_live = assistant_llm_enabled()
+    ai_engine_label = assistant_llm_engine_label()
 
     if not history:
-        history = [
-            {
-                "role": "assistant",
-                "content": (
-                    "Chat Assistant ready. I understand English + Arabic.\n"
-                    "For writes, I will always do: Draft -> Confirm -> Apply."
-                ),
-            }
+        intro_lines = [
+            "Chat Assistant ready. I understand English + Arabic.",
+            "For writes, I always do: Draft -> Confirm -> Apply.",
         ]
+        if ai_engine_live:
+            intro_lines.append(f"AI engine online: {ai_engine_label}.")
+        else:
+            intro_lines.append("AI engine: fallback parser mode (set AI_ASSISTANT_API_KEY to enable live model).")
+        history = [{"role": "assistant", "content": "\n".join(intro_lines)}]
 
     if request.method == "POST":
         if request.POST.get("clear_chat") == "1":
@@ -2928,10 +4926,51 @@ def analytics_assistant(request):
         if message:
             _assistant_append_chat(history, "user", message)
 
-            if pending_action:
+            llm_preface = ""
+            message_for_actions = message
+            llm_handled = False
+
+            if not pending_action and ai_engine_live:
+                try:
+                    llm_plan = generate_assistant_plan(
+                        message=message,
+                        chat_history=history,
+                        user_role=role,
+                        active_branch_name=active_branch.name if active_branch else "",
+                        branch_names=list(Branch.objects.order_by("name").values_list("name", flat=True)[:50]),
+                        location_codes=(
+                            list(
+                                Location.objects.filter(branch=active_branch)
+                                .order_by("code")
+                                .values_list("code", flat=True)[:200]
+                            )
+                            if active_branch
+                            else []
+                        ),
+                    )
+                except AssistantLLMError:
+                    llm_plan = None
+
+                if llm_plan:
+                    if llm_plan.get("mode") == "chat":
+                        _assistant_append_chat(
+                            history,
+                            "assistant",
+                            llm_plan.get("assistant_reply", "").strip() or "How can I help?",
+                        )
+                        llm_handled = True
+                    elif llm_plan.get("mode") == "command":
+                        command_text = (llm_plan.get("command_text") or "").strip()
+                        if command_text:
+                            message_for_actions = command_text
+                            llm_preface = (llm_plan.get("assistant_reply") or "").strip()
+
+            if llm_handled:
+                pass
+            elif pending_action:
                 if is_confirm_message(message):
                     if pending_action.get("action") in WRITE_ACTIONS and active_branch is None:
-                        response_text = "يجب اختيار الفرع النشط أولاً قبل تنفيذ أي عملية كتابة."
+                        response_text = "Select an active branch before applying write operations."
                     else:
                         try:
                             response_text = _assistant_execute_pending_action(request, pending_action)
@@ -2948,26 +4987,26 @@ def analytics_assistant(request):
                     )
                 _assistant_append_chat(history, "assistant", response_text)
             else:
-                parsed = parse_chat_message(message)
+                parsed = parse_chat_message(message_for_actions)
                 action = parsed["action"]
-                branch_context = resolve_branch_context(user=request.user, action=action, message=message)
+                branch_context = resolve_branch_context(user=request.user, action=action, message=message_for_actions)
                 branch = branch_context.get("branch")
                 from_branch = branch_context.get("from_branch")
                 to_branch = branch_context.get("to_branch")
 
                 precheck_error = ""
                 if action in WRITE_ACTIONS and active_branch is None:
-                    precheck_error = "يجب اختيار الفرع النشط أولاً قبل تنفيذ أي عملية كتابة."
+                    precheck_error = "Select an active branch before applying write operations."
                 elif action in {"add_stock", "remove_stock", "move_stock"} and active_branch is not None:
                     if branch is None:
                         branch = active_branch
                     elif is_admin_user(request.user) and branch.id != active_branch.id:
-                        precheck_error = "يمكن تنفيذ العملية فقط على الفرع النشط حالياً."
+                        precheck_error = "You can apply write actions only against the currently active branch."
                 elif action == "create_transfer_request" and active_branch is not None:
                     if from_branch is None:
                         from_branch = active_branch
                     elif is_admin_user(request.user) and from_branch.id != active_branch.id:
-                        precheck_error = "فرع المصدر يجب أن يطابق الفرع النشط حالياً."
+                        precheck_error = "Transfer source branch must match the currently active branch."
 
                 if precheck_error:
                     _assistant_append_chat(history, "assistant", precheck_error)
@@ -2982,7 +5021,7 @@ def analytics_assistant(request):
                     if not allowed:
                         _assistant_append_chat(history, "assistant", denial_reason)
                     elif action == "lookup_stock":
-                        part_query = (parsed.get("part_query") or message).strip()
+                        part_query = (parsed.get("part_query") or message_for_actions).strip()
                         part_candidates = find_part_candidates(part_query, branch)
                         if not part_candidates:
                             _assistant_append_chat(
@@ -3048,7 +5087,7 @@ def analytics_assistant(request):
                                     if not branch:
                                         _assistant_append_chat(history, "assistant", "Please mention the branch.")
                                     elif not location_hints:
-                                        _assistant_append_chat(history, "assistant", "Please mention location code (A3/B1/رف 3).")
+                                        _assistant_append_chat(history, "assistant", "Please mention location code (A3/B1/shelf 3).")
                                     else:
                                         location = resolve_location(branch, location_hints[0])
                                         if not location:
@@ -3104,10 +5143,7 @@ def analytics_assistant(request):
                                         _assistant_append_chat(
                                             history,
                                             "assistant",
-                                            (
-                                                "Please specify both source and destination branches.\n"
-                                                "Examples: الصناعية القديمة -> مخرج 18, or Main -> North."
-                                            ),
+                                            "Please specify both source and destination branches. Example: الصناعية القديمة -> مخرج 18",
                                         )
                                     else:
                                         pending_action = {
@@ -3123,14 +5159,13 @@ def analytics_assistant(request):
 
                                 if pending_action:
                                     preview = pending_action["params"]
-                                    _assistant_append_chat(
-                                        history,
-                                        "assistant",
-                                        (
-                                            f"Draft action: `{action}` for part `{preview['part_number']}` qty `{preview['qty']}`.\n"
-                                            "Reply `confirm` / `تأكيد` to apply, or `cancel` / `إلغاء` to discard."
-                                        ),
+                                    draft_text = (
+                                        f"Draft action: `{action}` for part `{preview['part_number']}` qty `{preview['qty']}`.\n"
+                                        "Reply `confirm` / `تأكيد` to apply, or `cancel` / `إلغاء` to discard."
                                     )
+                                    if llm_preface:
+                                        draft_text = f"{llm_preface}\n\n{draft_text}"
+                                    _assistant_append_chat(history, "assistant", draft_text)
 
         request.session[ASSISTANT_CHAT_HISTORY_KEY] = history
         request.session[ASSISTANT_CHAT_PENDING_KEY] = pending_action
@@ -3142,15 +5177,18 @@ def analytics_assistant(request):
         "assistant_role": role,
         "assistant_branch": active_branch or profile.branch,
         "assistant_write_actions": sorted(WRITE_ACTIONS),
+        "assistant_engine_live": ai_engine_live,
+        "assistant_engine_label": ai_engine_label,
     }
     return render(request, "inventory/ai_assistant.html", context)
-
 
 @login_required
 @manager_required
 @require_POST
 @active_branch_required
 def refund_sale(request, sale_id: int):
+    if _blocked_by_view_only_acl(request.user, Sale):
+        return HttpResponseForbidden("Your account is view-only for refund actions.")
     scoped_sales = _scope_branch(
         Sale.objects.select_related("part", "branch", "order"),
         request.user,
@@ -3364,7 +5402,7 @@ def export_sales_csv(request):
         xlsx_response = _export_sales_xlsx_response(sales_queryset, filename_stem)
         if xlsx_response is not None:
             return xlsx_response
-        messages.warning(request, "XLSX export requires openpyxl. Falling back to CSV.")
+        messages.warning(request, "تصدير XLSX يتطلب تثبيت مكتبة openpyxl. تم التحويل تلقائيًا إلى CSV.")
 
     response = StreamingHttpResponse(
         _sales_csv_rows(sales_queryset),
@@ -3803,11 +5841,49 @@ def stock_locations_view(request):
 @login_required
 @require_GET
 def vehicle_catalog(request):
-    vehicles = Vehicle.objects.all().order_by("make", "model", "year")
-    grouped_vehicles = {}
-    for vehicle in vehicles:
-        grouped_vehicles.setdefault(vehicle.model, []).append(vehicle)
+    vehicles = Vehicle.objects.all().order_by("make", "model", "-year")
 
-    return render(request, "inventory/vehicle_catalog.html", {"grouped_vehicles": grouped_vehicles})
+    grouped_by_make: dict[str, dict[str, list[Vehicle]]] = {}
+    for vehicle in vehicles:
+        make = (vehicle.make or "").strip() or "Unknown Make"
+        model = (vehicle.model or "").strip() or "Unknown Model"
+        grouped_by_make.setdefault(make, {}).setdefault(model, []).append(vehicle)
+
+    make_sections = []
+    for make_name in sorted(grouped_by_make.keys(), key=lambda value: value.casefold()):
+        models_map = grouped_by_make[make_name]
+        models = []
+        total_years = 0
+        for model_name in sorted(models_map.keys(), key=lambda value: value.casefold()):
+            rows = sorted(models_map[model_name], key=lambda row: row.year, reverse=True)
+            total_years += len(rows)
+            models.append(
+                {
+                    "name": model_name,
+                    "years": rows,
+                    "count": len(rows),
+                }
+            )
+        make_sections.append(
+            {
+                "name": make_name,
+                "slug": re.sub(r"[^a-z0-9]+", "-", make_name.casefold()).strip("-") or "make",
+                "models": models,
+                "models_count": len(models),
+                "years_count": total_years,
+            }
+        )
+
+    return render(
+        request,
+        "inventory/vehicle_catalog.html",
+        {
+            "make_sections": make_sections,
+            "total_makes": len(make_sections),
+            "total_models": sum(section["models_count"] for section in make_sections),
+            "total_year_rows": sum(section["years_count"] for section in make_sections),
+        },
+    )
+
 
 
