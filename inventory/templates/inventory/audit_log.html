@@ -1,6 +1,65 @@
 {% extends 'inventory/base.html' %}
 
 {% block title %}Audit Log{% endblock %}
+{% block head_extra %}
+<style>
+    .audit-action-badge {
+        display: inline-block;
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: #b3154a;
+        background: #fff0f5;
+        border: 1px solid #f3bfd1;
+        border-radius: 999px;
+        padding: 0.18rem 0.58rem;
+        white-space: nowrap;
+    }
+
+    .audit-object {
+        font-weight: 600;
+        color: #223f61;
+    }
+
+    .audit-kv-wrap {
+        min-width: 240px;
+        max-width: 360px;
+    }
+
+    .audit-kv-list {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+
+    .audit-kv-item {
+        display: grid;
+        grid-template-columns: 110px minmax(0, 1fr);
+        gap: 0.4rem;
+        align-items: start;
+        margin-bottom: 0.22rem;
+    }
+
+    .audit-kv-key {
+        color: #55708e;
+        font-size: 0.76rem;
+        font-weight: 700;
+        word-break: break-word;
+    }
+
+    .audit-kv-value {
+        color: #16324f;
+        font-size: 0.8rem;
+        font-weight: 500;
+        word-break: break-word;
+        white-space: normal;
+    }
+
+    .audit-empty {
+        color: #7f94ab;
+        font-size: 0.8rem;
+    }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="container-fluid px-3 px-lg-4">
@@ -79,11 +138,41 @@
                             <td>{{ log.actor_username }}</td>
                             <td>{{ log.actor_employee_id|default:"-" }}</td>
                             <td>{{ log.branch.name|default:"-" }}</td>
-                            <td><code>{{ log.action }}</code></td>
+                            <td><span class="audit-action-badge">{{ log.action }}</span></td>
                             <td>{{ log.reason }}</td>
-                            <td>{{ log.object_type }}:{{ log.object_id }}</td>
-                            <td><pre class="small mb-0">{{ log.before_data }}</pre></td>
-                            <td><pre class="small mb-0">{{ log.after_data }}</pre></td>
+                            <td class="audit-object">{{ log.object_type }}:{{ log.object_id }}</td>
+                            <td>
+                                <div class="audit-kv-wrap">
+                                    {% if log.old_values %}
+                                        <ul class="audit-kv-list">
+                                            {% for k, v in log.old_values.items %}
+                                                <li class="audit-kv-item">
+                                                    <span class="audit-kv-key">{{ k }}</span>
+                                                    <span class="audit-kv-value">{{ v }}</span>
+                                                </li>
+                                            {% endfor %}
+                                        </ul>
+                                    {% else %}
+                                        <span class="audit-empty">-</span>
+                                    {% endif %}
+                                </div>
+                            </td>
+                            <td>
+                                <div class="audit-kv-wrap">
+                                    {% if log.new_values %}
+                                        <ul class="audit-kv-list">
+                                            {% for k, v in log.new_values.items %}
+                                                <li class="audit-kv-item">
+                                                    <span class="audit-kv-key">{{ k }}</span>
+                                                    <span class="audit-kv-value">{{ v }}</span>
+                                                </li>
+                                            {% endfor %}
+                                        </ul>
+                                    {% else %}
+                                        <span class="audit-empty">-</span>
+                                    {% endif %}
+                                </div>
+                            </td>
                         </tr>
                     {% empty %}
                         <tr><td colspan="9" class="text-center text-muted py-5">No audit logs found.</td></tr>

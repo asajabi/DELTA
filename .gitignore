@@ -8,12 +8,20 @@ venv/
 
 # Django
 db.sqlite3
+*.sqlite3-journal
 staticfiles/
 media/
 
 # Environment files
 .env
 .env.local
+
+# Test / tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
 
 # IDE
 .vscode/

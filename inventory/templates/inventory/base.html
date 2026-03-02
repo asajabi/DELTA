@@ -1,31 +1,74 @@
-﻿{% load static i18n %}
+{% load static i18n %}
 <!doctype html>
 <html lang="{{ LANGUAGE_CODE|default:'ar' }}" dir="{% if LANGUAGE_CODE == 'ar' %}rtl{% else %}ltr{% endif %}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}DELTA POS{% endblock %}</title>
+    <title>{% block title %}دلتا لنقطة البيع{% endblock %}</title>
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="{% static 'css/part_picker.css' %}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --delta-blue: #0f3d66;
-            --delta-gold: #d59b2d;
-            --delta-bg: #f5f7fb;
-            --delta-dark: #1f2937;
+            --delta-navy-950: #061525;
+            --delta-navy-900: #0b243f;
+            --delta-navy-800: #12385f;
+            --delta-blue-600: #1f82d4;
+            --delta-blue-500: #2993ec;
+            --delta-blue-100: #eaf3fe;
+            --delta-slate-100: #f4f7fb;
+            --delta-slate-200: #e6ecf4;
+            --delta-slate-300: #d2deec;
+            --delta-slate-500: #5e748f;
+            --delta-ink: #10243a;
+            --delta-card-shadow: 0 14px 28px rgba(9, 34, 59, 0.11);
+            --delta-card-shadow-hover: 0 18px 34px rgba(7, 30, 52, 0.16);
+        }
+
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            width: 100%;
+            max-width: 100%;
+            overflow-x: hidden;
         }
 
         body {
             min-height: 100vh;
-            background: radial-gradient(circle at top right, #e9eef7, var(--delta-bg));
-            color: var(--delta-dark);
+            background:
+                radial-gradient(circle at 100% 0, rgba(73, 141, 213, 0.12) 0%, rgba(73, 141, 213, 0) 33%),
+                radial-gradient(circle at 0 100%, rgba(55, 95, 146, 0.09) 0%, rgba(55, 95, 146, 0) 38%),
+                linear-gradient(180deg, #eef3f9 0%, #e9eef6 100%);
+            color: var(--delta-ink);
             display: flex;
             flex-direction: column;
             font-family: "Tajawal", "Noto Sans Arabic", "Segoe UI", sans-serif;
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+        }
+
+        body > nav,
+        body > main,
+        body > footer {
+            width: 100%;
+            max-width: 100%;
+        }
+
+        img,
+        svg,
+        video,
+        canvas {
+            max-width: 100%;
+            height: auto;
         }
 
         main {
@@ -33,35 +76,106 @@
         }
 
         .navbar {
-            background: linear-gradient(90deg, var(--delta-blue), #145389);
+            background:
+                radial-gradient(circle at 85% 8%, rgba(83, 158, 237, 0.3) 0%, rgba(83, 158, 237, 0) 34%),
+                linear-gradient(92deg, var(--delta-navy-950) 0%, var(--delta-navy-900) 48%, var(--delta-navy-800) 100%);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 7px 18px rgba(2, 12, 23, 0.32);
         }
 
         .navbar-brand {
             font-weight: 700;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.4px;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            text-decoration: none;
+            line-height: 1;
+        }
+
+        .delta-brand-logo {
+            width: 4.8rem;
+            height: 4.8rem;
+            flex-shrink: 0;
+            object-fit: contain;
+            filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.28));
+        }
+
+        .delta-brand-mark {
+            font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+            font-size: 1.34rem;
+            font-style: italic;
+            font-weight: 700;
+            letter-spacing: 0.15px;
+            color: #e9f2ff;
+        }
+
+        .delta-brand-name {
+            font-family: "Tajawal", sans-serif;
+            font-size: 1.26rem;
+            font-weight: 700;
+            color: #f7fbff;
+            white-space: nowrap;
+            letter-spacing: 0.1px;
         }
 
         .delta-menu-btn {
-            border-radius: 0.6rem;
+            border-radius: 0.68rem;
             min-width: 2.25rem;
+            border-color: rgba(255, 255, 255, 0.5);
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .delta-menu-btn:hover {
+            background: rgba(255, 255, 255, 0.14);
+            border-color: rgba(255, 255, 255, 0.75);
+        }
+
+        .navbar .form-select,
+        .navbar .btn-outline-light {
+            border-radius: 0.66rem;
         }
 
         .delta-nav-panel {
-            background: linear-gradient(180deg, var(--delta-blue), #145389);
+            background:
+                radial-gradient(circle at 10% 8%, rgba(96, 169, 244, 0.22) 0%, rgba(96, 169, 244, 0) 34%),
+                linear-gradient(180deg, #0a2745 0%, #123e67 100%);
             width: min(320px, 88vw);
+            border-inline-end: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        .delta-nav-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.45);
+            z-index: 1040;
+            display: none;
+        }
+
+        .delta-nav-backdrop.show {
+            display: block;
         }
 
         .delta-nav-link {
-            color: #e8edf6;
-            border-radius: 0.5rem;
+            color: #e7eff9;
+            border-radius: 0.62rem;
             padding: 0.55rem 0.75rem;
-            transition: background-color 0.15s ease;
+            transition: all 0.16s ease;
+            border: 1px solid transparent;
         }
 
         .delta-nav-link:hover,
         .delta-nav-link:focus {
             color: #ffffff;
-            background: rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.13);
+            border-color: rgba(255, 255, 255, 0.24);
+        }
+
+        .delta-nav-link.active {
+            color: #ffffff;
+            background: linear-gradient(180deg, rgba(38, 141, 230, 0.34), rgba(27, 108, 177, 0.3));
+            border-color: rgba(127, 193, 255, 0.45);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
         }
 
         .barcode-scanner-modal .modal-content {
@@ -96,19 +210,412 @@
             padding-bottom: 2rem;
         }
 
+        a {
+            color: #135ca0;
+            text-decoration-thickness: 1px;
+        }
+
+        a:hover {
+            color: #0f477c;
+        }
+
         .message-wrap {
             max-width: 1120px;
         }
 
         .delta-card {
-            border: 0;
+            border: 1px solid var(--delta-slate-300);
             border-radius: 1rem;
-            box-shadow: 0 8px 26px rgba(15, 61, 102, 0.08);
+            box-shadow: var(--delta-card-shadow);
+            background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+            animation: deltaFadeUp 0.24s ease both;
+        }
+
+        .delta-card:hover {
+            box-shadow: var(--delta-card-shadow-hover);
+        }
+
+        .delta-page-shell {
+            max-width: 1360px;
+            margin-inline: auto;
+            width: 100%;
+        }
+
+        .delta-hero {
+            position: relative;
+            overflow: hidden;
+            border-radius: 1rem;
+            padding: 1.05rem 1.15rem;
+            margin-bottom: 0.9rem;
+            color: #e9f4ff;
+            border: 1px solid rgba(120, 170, 220, 0.42);
+            background:
+                radial-gradient(circle at 12% 10%, rgba(89, 165, 242, 0.42) 0%, rgba(89, 165, 242, 0) 42%),
+                linear-gradient(96deg, #071a2f 0%, #0f2f51 45%, #144774 100%);
+            box-shadow: 0 18px 34px rgba(5, 20, 36, 0.34);
+        }
+
+        .delta-hero::after {
+            content: "";
+            position: absolute;
+            inset-inline-end: -70px;
+            inset-block-start: -80px;
+            width: 210px;
+            height: 210px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(86, 163, 238, 0.34) 0%, rgba(86, 163, 238, 0) 72%);
+            pointer-events: none;
+        }
+
+        .delta-hero h1,
+        .delta-hero .h4,
+        .delta-hero .h5 {
+            color: #ffffff;
+            margin-bottom: 0.15rem;
+        }
+
+        .delta-hero .text-muted,
+        .delta-hero p {
+            color: rgba(224, 239, 255, 0.84) !important;
+            margin-bottom: 0;
+        }
+
+        .delta-hero .btn-outline-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.4);
+            color: #f0f7ff;
+        }
+
+        .delta-hero .btn-outline-secondary:hover,
+        .delta-hero .btn-outline-secondary:focus {
+            background: rgba(255, 255, 255, 0.2);
+            color: #ffffff;
+            border-color: rgba(255, 255, 255, 0.58);
+        }
+
+        .delta-kpi-grid {
+            display: grid;
+            gap: 0.65rem;
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            margin-top: 0.75rem;
+        }
+
+        .delta-kpi {
+            border: 1px solid #d6e4f2;
+            border-radius: 0.82rem;
+            background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+            padding: 0.72rem 0.78rem;
+        }
+
+        .delta-kpi-label {
+            display: block;
+            font-size: 0.73rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #5e7895;
+            font-weight: 700;
+            margin-bottom: 0.22rem;
+        }
+
+        .delta-kpi-value {
+            display: block;
+            font-size: 1.14rem;
+            line-height: 1.15;
+            color: #0f3254;
+            font-weight: 700;
+        }
+
+        .delta-accent-card {
+            border: 1px solid #c5d8ed;
+            border-radius: 1rem;
+            box-shadow: var(--delta-card-shadow);
+            background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+        }
+
+        .delta-accent-card > .card-header {
+            background:
+                radial-gradient(circle at 100% 0, rgba(84, 151, 220, 0.28) 0%, rgba(84, 151, 220, 0) 43%),
+                linear-gradient(92deg, #102d4a 0%, #1a466f 100%);
+            color: #f4f9ff;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 1rem 1rem 0 0;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            padding: 0.68rem 0.86rem;
+        }
+
+        .delta-soft-panel {
+            border: 1px solid #d4e3f2;
+            border-radius: 0.86rem;
+            background: linear-gradient(180deg, #fcfdff 0%, #f3f8ff 100%);
+            padding: 0.78rem;
+        }
+
+        .delta-inline-form {
+            display: grid;
+            gap: 0.5rem;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            align-items: end;
+        }
+
+        .delta-action-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .delta-action-tabs .btn {
+            min-height: 2.4rem;
+            padding-inline: 0.95rem;
+            white-space: nowrap;
+        }
+
+        .delta-list-clean {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+
+        .delta-list-clean li {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.35rem;
+            border-bottom: 1px dashed #d9e7f5;
+            padding: 0.43rem 0;
+        }
+
+        .delta-list-clean li:last-child {
+            border-bottom: 0;
+        }
+
+        .delta-chip {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            border: 1px solid #b9d0e8;
+            background: #f4f9ff;
+            color: #17466d;
+            font-size: 0.75rem;
+            padding: 0.2rem 0.58rem;
+            font-weight: 600;
+            line-height: 1.2;
+        }
+
+        .delta-empty {
+            border: 1px dashed #c0d5ea;
+            border-radius: 0.86rem;
+            background: #f7fbff;
+            color: #55708b;
+            text-align: center;
+            padding: 0.9rem;
+        }
+
+        .delta-table-panel .table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        .card-title,
+        .h4,
+        .h5,
+        .h6 {
+            color: var(--delta-ink);
+        }
+
+        .text-muted {
+            color: var(--delta-slate-500) !important;
+        }
+
+        .form-control,
+        .form-select,
+        textarea.form-control {
+            border-radius: 0.72rem;
+            border-color: #b7c9dd;
+            background: #ffffff;
+            color: #122841;
+            min-height: 2.45rem;
+        }
+
+        .form-control:focus,
+        .form-select:focus,
+        textarea.form-control:focus {
+            border-color: #6e99c6;
+            box-shadow: 0 0 0 0.2rem rgba(41, 130, 212, 0.15);
+        }
+
+        .input-group > .btn {
+            border-radius: 0.72rem;
+        }
+
+        .btn {
+            border-radius: 0.72rem;
+            font-weight: 600;
+            transition: transform 0.14s ease, box-shadow 0.14s ease, background-color 0.14s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+        }
+
+        .btn-primary {
+            background: linear-gradient(180deg, var(--delta-blue-500), var(--delta-blue-600));
+            border-color: #2b83ce;
+            box-shadow: 0 8px 16px rgba(19, 93, 157, 0.24);
+        }
+
+        .btn-primary:hover,
+        .btn-primary:focus {
+            background: linear-gradient(180deg, #3ea2fb, #2a88d7);
+            border-color: #2f8bd8;
+        }
+
+        .btn-outline-secondary {
+            border-color: #98b0ca;
+            color: #26486d;
+            background: #ffffff;
+        }
+
+        .btn-outline-secondary:hover,
+        .btn-outline-secondary:focus {
+            border-color: #7f9dbc;
+            color: #1d3e62;
+            background: #eff6ff;
+        }
+
+        .btn-outline-dark {
+            border-color: #2f5a86;
+            color: #1f4164;
+            background: #ffffff;
+        }
+
+        .btn-outline-dark:hover,
+        .btn-outline-dark:focus {
+            background: #eef6ff;
+            color: #183a5a;
+            border-color: #24517f;
+        }
+
+        .btn-outline-light {
+            border-color: rgba(255, 255, 255, 0.55);
+            color: #eef6ff;
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .btn-outline-light:hover,
+        .btn-outline-light:focus {
+            background: rgba(255, 255, 255, 0.2);
+            color: #ffffff;
+            border-color: rgba(255, 255, 255, 0.72);
+        }
+
+        .table {
+            border-color: #d4e1ef;
+            color: #162c45;
+        }
+
+        .table > :not(caption) > * > * {
+            padding: 0.66rem 0.72rem;
+        }
+
+        .table thead th {
+            background: linear-gradient(180deg, #f4f9ff, #edf4fc);
+            color: #3f5f82;
+            border-bottom: 1px solid #d2deec;
+            font-size: 0.79rem;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            font-weight: 700;
+        }
+
+        .table-hover tbody tr:hover {
+            background: #f4f9ff;
+        }
+
+        .table-striped > tbody > tr:nth-of-type(odd) > * {
+            background: #fafcff;
+        }
+
+        .table-responsive {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .badge {
+            border-radius: 999px;
+        }
+
+        .page-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .page-actions .btn {
+            white-space: normal;
+            line-height: 1.25;
+        }
+
+        .pagination .page-link {
+            border-radius: 0.58rem;
+            border-color: #c4d5e8;
+            color: #245078;
+            margin-inline: 0.12rem;
+            min-width: 2.1rem;
+            text-align: center;
+        }
+
+        .pagination .page-link:hover {
+            background: #ecf5ff;
+            border-color: #9eb9d6;
+            color: #1a4369;
+        }
+
+        .pagination .page-item.active .page-link {
+            background: linear-gradient(180deg, #3297ef, #227cc6);
+            border-color: #2a80ca;
+            color: #fff;
+        }
+
+        .alert {
+            border-radius: 0.84rem;
+            border-width: 1px;
+            box-shadow: 0 8px 18px rgba(12, 39, 66, 0.08);
+        }
+
+        .alert-info {
+            background: #edf6ff;
+            border-color: #c8ddf4;
+            color: #17466f;
+        }
+
+        .alert-success {
+            background: #ebf9f0;
+            border-color: #c6e9d3;
+            color: #155f3b;
+        }
+
+        .alert-warning {
+            background: #fff8ea;
+            border-color: #f2deb0;
+            color: #7e5a10;
+        }
+
+        .alert-danger {
+            background: #ffeff1;
+            border-color: #f5c6cd;
+            color: #842029;
         }
 
         footer {
-            background: #111827;
-            color: #c9d1df;
+            background:
+                radial-gradient(circle at 90% 0, rgba(77, 142, 212, 0.25) 0%, rgba(77, 142, 212, 0) 36%),
+                linear-gradient(180deg, #081a2b 0%, #071524 100%);
+            color: #d2deed;
+            border-top: 1px solid rgba(255, 255, 255, 0.15);
             padding: 1rem 0;
             font-size: 0.9rem;
         }
@@ -117,9 +624,189 @@
             text-align: {% if LANGUAGE_CODE == 'ar' %}right{% else %}left{% endif %};
         }
 
+        @keyframes deltaFadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(4px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @media (max-width: 992px) {
+            .navbar .container-fluid {
+                row-gap: 0.45rem;
+            }
+
+            .navbar .ms-auto.d-flex {
+                width: 100%;
+            }
+        }
+
         @media (max-width: 768px) {
+            .navbar {
+                padding-block: 0.5rem;
+            }
+
+            .navbar .container-fluid {
+                display: grid;
+                grid-template-columns: 1fr;
+                align-items: start;
+            }
+
+            .navbar .container-fluid > .d-flex:first-child {
+                width: 100%;
+                justify-content: space-between;
+            }
+
             .content-shell {
                 padding-top: 0.75rem;
+                padding-bottom: 1.2rem;
+            }
+
+            .container-fluid,
+            .container {
+                padding-inline: 0.75rem !important;
+            }
+
+            .navbar-brand {
+                font-size: 1.02rem;
+                gap: 0.34rem;
+            }
+
+            .delta-brand-logo {
+                width: 3.6rem;
+                height: 3.6rem;
+            }
+
+            .delta-brand-mark {
+                font-size: 1.12rem;
+            }
+
+            .delta-brand-name {
+                font-size: 1.02rem;
+            }
+
+            .navbar .ms-auto.d-flex {
+                justify-content: flex-start !important;
+                gap: 0.4rem !important;
+                margin: 0 !important;
+            }
+
+            .navbar .ms-auto {
+                margin-inline-start: 0 !important;
+            }
+
+            .navbar .ms-auto .text-light.small {
+                width: 100%;
+                padding-inline: 0 !important;
+            }
+
+            .navbar .ms-auto form.d-flex {
+                width: 100%;
+                flex-wrap: wrap;
+                gap: 0.35rem !important;
+            }
+
+            .navbar .ms-auto form.d-flex .form-select {
+                flex: 1 1 150px;
+                min-width: 0;
+            }
+
+            .navbar .ms-auto form.d-flex .btn {
+                flex: 0 0 auto;
+            }
+
+            .btn,
+            .form-control,
+            .form-select {
+                min-height: 2.25rem;
+            }
+
+            .page-actions {
+                width: 100%;
+            }
+
+            .page-actions .btn {
+                flex: 1 1 calc(50% - 0.25rem);
+                text-align: center;
+            }
+
+            .table > :not(caption) > * > * {
+                padding: 0.54rem 0.56rem;
+                font-size: 0.86rem;
+            }
+
+            .table-responsive > .table {
+                min-width: 100%;
+            }
+
+            .delta-hero {
+                padding: 0.8rem 0.85rem;
+            }
+
+            .delta-inline-form {
+                grid-template-columns: 1fr;
+            }
+
+            .delta-kpi-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .delta-action-tabs .btn {
+                white-space: normal;
+                line-height: 1.3;
+            }
+        }
+
+        @media (max-width: 576px) {
+            .navbar-brand {
+                font-size: 0.95rem;
+                gap: 0.26rem;
+            }
+
+            .delta-brand-logo {
+                width: 3rem;
+                height: 3rem;
+            }
+
+            .delta-brand-mark {
+                font-size: 0.98rem;
+            }
+
+            .delta-brand-name {
+                font-size: 0.9rem;
+            }
+
+            .delta-menu-btn {
+                min-width: 2rem;
+            }
+
+            .pagination {
+                flex-wrap: wrap;
+            }
+
+            .pagination .page-link {
+                min-width: 1.85rem;
+                padding: 0.34rem 0.5rem;
+            }
+
+            footer {
+                font-size: 0.82rem;
+            }
+
+            .page-actions .btn {
+                flex: 1 1 100%;
+            }
+
+            .delta-kpi-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .delta-action-tabs .btn {
+                flex: 1 1 100%;
             }
         }
     </style>
@@ -130,17 +817,20 @@
     <div class="container-fluid px-3 px-lg-4">
         <div class="d-flex align-items-center gap-2">
             <a class="navbar-brand mb-0" href="{% url 'part_search' %}">
-                <i class="fa-solid fa-gear"></i>
-                DELTA POS
+                <img src="{% static 'inventory/images/logo.png' %}" alt="DBP Logo" class="delta-brand-logo">
+                <span class="delta-brand-mark">DBP</span>
+                <span class="delta-brand-name">دلتا لنقطة البيع</span>
             </a>
             {% if user.is_authenticated %}
                 <button
                     id="deltaMenuToggle"
                     class="btn btn-sm btn-outline-light delta-menu-btn"
                     type="button"
+                    data-bs-toggle="offcanvas"
+                    data-bs-target="#deltaNavPanel"
                     aria-controls="deltaNavPanel"
                     aria-expanded="false"
-                    aria-label="Toggle navigation menu"
+                    aria-label="فتح أو إغلاق القائمة"
                 >
                     <i class="fa-solid fa-bars"></i>
                 </button>
@@ -183,7 +873,7 @@
     <div class="offcanvas offcanvas-start delta-nav-panel text-bg-dark" tabindex="-1" id="deltaNavPanel" aria-labelledby="deltaNavPanelLabel">
         <div class="offcanvas-header border-bottom border-light border-opacity-25">
             <h5 class="offcanvas-title" id="deltaNavPanelLabel">القائمة</h5>
-            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="إغلاق"></button>
         </div>
         <div class="offcanvas-body">
             {% with current_url=request.resolver_match.url_name %}
@@ -204,9 +894,21 @@
                         <a class="nav-link delta-nav-link {% if current_url == 'ticket_list' or current_url == 'ticket_create' or current_url == 'ticket_detail' %}active{% endif %}" href="{% url 'ticket_list' %}" {% if current_url == 'ticket_list' or current_url == 'ticket_create' or current_url == 'ticket_detail' %}aria-current="page"{% endif %}>الدعم الفني</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link delta-nav-link {% if current_url == 'analytics_assistant' or current_url == 'chat_assistant' %}active{% endif %}" href="{% url 'analytics_assistant' %}" {% if current_url == 'analytics_assistant' or current_url == 'chat_assistant' %}aria-current="page"{% endif %}>Chat Assistant</a>
+                        <a class="nav-link delta-nav-link {% if current_url == 'analytics_assistant' or current_url == 'chat_assistant' %}active{% endif %}" href="{% url 'analytics_assistant' %}" {% if current_url == 'analytics_assistant' or current_url == 'chat_assistant' %}aria-current="page"{% endif %}>المساعد الذكي</a>
                     </li>
                     {% if nav_is_manager %}
+                        <li class="nav-item">
+                            <a class="nav-link delta-nav-link {% if current_url == 'vendor_list' or current_url == 'vendor_create' or current_url == 'vendor_detail' or current_url == 'vendor_edit' %}active{% endif %}" href="{% url 'vendor_list' %}" {% if current_url == 'vendor_list' or current_url == 'vendor_create' or current_url == 'vendor_detail' or current_url == 'vendor_edit' %}aria-current="page"{% endif %}>الموردون</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link delta-nav-link {% if current_url == 'purchase_order_list' or current_url == 'purchase_order_create' or current_url == 'purchase_order_detail' %}active{% endif %}" href="{% url 'purchase_order_list' %}" {% if current_url == 'purchase_order_list' or current_url == 'purchase_order_create' or current_url == 'purchase_order_detail' %}aria-current="page"{% endif %}>أوامر الشراء</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link delta-nav-link {% if current_url == 'purchase_receipt_list' or current_url == 'purchase_receipt_detail' %}active{% endif %}" href="{% url 'purchase_receipt_list' %}" {% if current_url == 'purchase_receipt_list' or current_url == 'purchase_receipt_detail' %}aria-current="page"{% endif %}>الاستلام</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link delta-nav-link {% if current_url == 'cycle_count_list' or current_url == 'cycle_count_detail' %}active{% endif %}" href="{% url 'cycle_count_list' %}" {% if current_url == 'cycle_count_list' or current_url == 'cycle_count_detail' %}aria-current="page"{% endif %}>الجرد الدوري</a>
+                        </li>
                         <li class="nav-item">
                             <a class="nav-link delta-nav-link {% if current_url == 'reports_dashboard' or current_url == 'sales_history' %}active{% endif %}" href="{% url 'reports_dashboard' %}" {% if current_url == 'reports_dashboard' or current_url == 'sales_history' %}aria-current="page"{% endif %}>التقارير</a>
                         </li>
@@ -222,12 +924,12 @@
                             <a class="nav-link delta-nav-link {% if current_url == 'location_list' %}active{% endif %}" href="{% url 'location_list' %}" {% if current_url == 'location_list' %}aria-current="page"{% endif %}>المواقع</a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link delta-nav-link {% if current_url == 'stock_locations_view' or current_url == 'stock_by_location' %}active{% endif %}" href="{% url 'stock_locations_view' %}" {% if current_url == 'stock_locations_view' or current_url == 'stock_by_location' %}aria-current="page"{% endif %}>Stock by Location</a>
+                            <a class="nav-link delta-nav-link {% if current_url == 'stock_locations_view' or current_url == 'stock_by_location' %}active{% endif %}" href="{% url 'stock_locations_view' %}" {% if current_url == 'stock_locations_view' or current_url == 'stock_by_location' %}aria-current="page"{% endif %}>المخزون حسب الموقع</a>
                         </li>
                     {% endif %}
                     {% if nav_is_admin %}
                         <li class="nav-item">
-                            <a class="nav-link delta-nav-link {% if current_url == 'audit_log_list' %}active{% endif %}" href="{% url 'audit_log_list' %}" {% if current_url == 'audit_log_list' %}aria-current="page"{% endif %}>Audit</a>
+                            <a class="nav-link delta-nav-link {% if current_url == 'audit_log_list' %}active{% endif %}" href="{% url 'audit_log_list' %}" {% if current_url == 'audit_log_list' %}aria-current="page"{% endif %}>سجل التدقيق</a>
                         </li>
                     {% endif %}
                 </ul>
@@ -241,8 +943,8 @@
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="barcodeScannerTitle">Barcode Scanner</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <h5 class="modal-title" id="barcodeScannerTitle">ماسح الباركود</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="إغلاق"></button>
                 </div>
                 <div class="modal-body">
                     <div class="barcode-scanner-video-wrap mb-2">
@@ -253,8 +955,8 @@
                     </p>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-info" data-barcode-camera-switch>Switch Camera</button>
-                    <button type="button" class="btn btn-outline-light" data-barcode-camera-close>Close Camera</button>
+                    <button type="button" class="btn btn-outline-info" data-barcode-camera-switch>تبديل الكاميرا</button>
+                    <button type="button" class="btn btn-outline-light" data-barcode-camera-close>إغلاق الكاميرا</button>
                 </div>
             </div>
         </div>
@@ -267,7 +969,7 @@
             {% for message in messages %}
                 <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show" role="alert">
                     {{ message }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="إغلاق"></button>
                 </div>
             {% endfor %}
         </div>
@@ -280,8 +982,8 @@
 
 <footer>
     <div class="container-fluid px-3 px-lg-4 d-flex flex-column flex-md-row justify-content-between">
-        <span>DELTA Auto Parts Inventory & POS</span>
-        <span>© {% now "Y" %} DELTA</span>
+        <span>دلتا لقطع الغيار والمخزون ونقطة البيع</span>
+        <span>&copy; {% now "Y" %} دلتا</span>
     </div>
 </footer>
 
@@ -289,32 +991,100 @@
 {% if user.is_authenticated %}
 <script src="{% static 'vendor/barcode/html5-qrcode.min.js' %}" data-barcode-lib></script>
 <script src="{% static 'js/barcode_scanner.js' %}"></script>
+<script src="{% static 'js/part_picker.js' %}"></script>
 {% endif %}
 <script>
 (function () {
     const toggleButton = document.getElementById('deltaMenuToggle');
     const panelElement = document.getElementById('deltaNavPanel');
-    if (!toggleButton || !panelElement || !window.bootstrap) return;
+    if (!toggleButton || !panelElement) return;
 
-    const offcanvas = window.bootstrap.Offcanvas.getOrCreateInstance(panelElement);
-    toggleButton.addEventListener('click', function () {
-        offcanvas.toggle();
-    });
-    panelElement.querySelectorAll('a.nav-link[href]').forEach(function (link) {
-        link.addEventListener('click', function (event) {
-            const href = (link.getAttribute('href') || '').trim();
-            if (!href || href === '#' || href.toLowerCase().startsWith('javascript:')) return;
+    const hasBootstrapOffcanvas = !!(window.bootstrap && window.bootstrap.Offcanvas);
+    const offcanvas = hasBootstrapOffcanvas
+        ? window.bootstrap.Offcanvas.getOrCreateInstance(panelElement)
+        : null;
+
+    let fallbackBackdrop = document.getElementById('deltaNavBackdrop');
+    if (!fallbackBackdrop) {
+        fallbackBackdrop = document.createElement('div');
+        fallbackBackdrop.id = 'deltaNavBackdrop';
+        fallbackBackdrop.className = 'delta-nav-backdrop';
+        document.body.appendChild(fallbackBackdrop);
+    }
+
+    function showFallbackMenu() {
+        panelElement.classList.add('show');
+        panelElement.style.visibility = 'visible';
+        panelElement.style.transform = 'translateX(0)';
+        fallbackBackdrop.classList.add('show');
+        toggleButton.setAttribute('aria-expanded', 'true');
+        document.body.style.overflow = 'hidden';
+    }
+
+    function hideFallbackMenu() {
+        panelElement.classList.remove('show');
+        panelElement.style.visibility = '';
+        panelElement.style.transform = '';
+        fallbackBackdrop.classList.remove('show');
+        toggleButton.setAttribute('aria-expanded', 'false');
+        document.body.style.overflow = '';
+    }
+
+    function toggleMenu() {
+        if (offcanvas) {
+            offcanvas.toggle();
+            return;
+        }
+        if (panelElement.classList.contains('show')) {
+            hideFallbackMenu();
+        } else {
+            showFallbackMenu();
+        }
+    }
+
+    if (!offcanvas) {
+        toggleButton.addEventListener('click', function (event) {
             event.preventDefault();
+            toggleMenu();
+        });
+    }
+
+    fallbackBackdrop.addEventListener('click', function () {
+        if (offcanvas) {
             offcanvas.hide();
-            window.location.assign(href);
+        } else {
+            hideFallbackMenu();
+        }
+    });
+
+    panelElement.querySelectorAll('a.nav-link[href]').forEach(function (link) {
+        link.addEventListener('click', function () {
+            if (offcanvas) {
+                offcanvas.hide();
+            } else {
+                hideFallbackMenu();
+            }
         });
     });
-    panelElement.addEventListener('shown.bs.offcanvas', function () {
-        toggleButton.setAttribute('aria-expanded', 'true');
+
+    panelElement.querySelectorAll('[data-bs-dismiss="offcanvas"]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            if (!offcanvas) {
+                hideFallbackMenu();
+            }
+        });
     });
-    panelElement.addEventListener('hidden.bs.offcanvas', function () {
-        toggleButton.setAttribute('aria-expanded', 'false');
-    });
+
+    if (offcanvas) {
+        panelElement.addEventListener('shown.bs.offcanvas', function () {
+            toggleButton.setAttribute('aria-expanded', 'true');
+        });
+        panelElement.addEventListener('hidden.bs.offcanvas', function () {
+            toggleButton.setAttribute('aria-expanded', 'false');
+            fallbackBackdrop.classList.remove('show');
+            document.body.style.overflow = '';
+        });
+    }
 })();
 </script>
 {% block scripts %}{% endblock %}

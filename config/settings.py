@@ -3,6 +3,8 @@ Django settings for config project.
 """
 
 import os
+import shutil
+import sys
 from pathlib import Path
 
 from django.utils.translation import gettext_lazy as _
@@ -11,11 +13,63 @@ from django.utils.translation import gettext_lazy as _
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
+def _load_dotenv_if_present(path: Path) -> None:
+    if not path.exists():
+        return
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+_load_dotenv_if_present(BASE_DIR / ".env")
+
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 def env_bool(name: str, default: bool = False) -> bool:
     return os.getenv(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def env_int(name: str, default: int) -> int:
+    raw = (os.getenv(name, str(default)) or "").strip()
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return default
+
+
+def _sqlite_default_path() -> Path:
+    explicit = (os.getenv("DJANGO_SQLITE_PATH", "") or "").strip()
+    if explicit:
+        return Path(explicit)
+
+    local_appdata = (os.getenv("LOCALAPPDATA", "") or "").strip()
+    if local_appdata:
+        target_dir = Path(local_appdata) / "DELTA_POS"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target_path = target_dir / "db.sqlite3"
+
+        # One-time copy from legacy project DB so existing data is preserved.
+        legacy_path = BASE_DIR / "db.sqlite3"
+        if not target_path.exists() and legacy_path.exists():
+            try:
+                shutil.copy2(legacy_path, target_path)
+            except OSError:
+                pass
+        return target_path
+
+    return BASE_DIR / "db.sqlite3"
 
 
 def _database_config():
@@ -36,7 +90,10 @@ def _database_config():
         db_name = (os.getenv("DJANGO_DB_NAME", "") or "").strip()
         return {
             "ENGINE": engine,
-            "NAME": db_name or (BASE_DIR / "db.sqlite3"),
+            "NAME": db_name or _sqlite_default_path(),
+            "OPTIONS": {
+                "timeout": int(os.getenv("DJANGO_SQLITE_TIMEOUT_SECONDS", "20")),
+            },
         }
 
     config = {
@@ -66,13 +123,22 @@ def _database_config():
     return config
 
 
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "django-insecure-x5oba50mau$ellbvo5(8ro2v1!bos6!ephw)o+(i6=1&3$asl&")
-DEBUG = env_bool("DJANGO_DEBUG", True)
+SECRET_KEY = os.getenv(
+    "DJANGO_SECRET_KEY",
+    "delta-pos-local-dev-change-this-5f16a29d7bd84cfca2d0f42b7f8f9f64",
+)
+DEBUG = env_bool("DJANGO_DEBUG", False)
+IS_TESTING = any(arg == "test" or arg.startswith("test") for arg in sys.argv[1:])
+SECURE_DEFAULTS = not DEBUG and not IS_TESTING
 
-ALLOWED_HOSTS = [host.strip() for host in os.getenv("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost").split(",") if host.strip()]
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.getenv("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost,.ngrok-free.dev").split(",")
+    if host.strip()
+]
 CSRF_TRUSTED_ORIGINS = [
     origin.strip()
-    for origin in os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",")
+    for origin in os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "https://*.ngrok-free.dev").split(",")
     if origin.strip()
 ]
 
@@ -190,14 +256,32 @@ LOGOUT_REDIRECT_URL = '/accounts/login/'
 
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = 'Lax'
-SESSION_COOKIE_SECURE = env_bool('DJANGO_SECURE_COOKIES', False)
+SESSION_COOKIE_SECURE = env_bool('DJANGO_SECURE_COOKIES', SECURE_DEFAULTS)
 CSRF_COOKIE_HTTPONLY = True
 CSRF_COOKIE_SAMESITE = 'Lax'
-CSRF_COOKIE_SECURE = env_bool('DJANGO_SECURE_COOKIES', False)
+CSRF_COOKIE_SECURE = env_bool('DJANGO_SECURE_COOKIES', SECURE_DEFAULTS)
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
-SECURE_SSL_REDIRECT = env_bool('DJANGO_SECURE_SSL_REDIRECT', False)
+SECURE_SSL_REDIRECT = env_bool('DJANGO_SECURE_SSL_REDIRECT', SECURE_DEFAULTS)
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_HSTS_SECONDS = env_int('DJANGO_SECURE_HSTS_SECONDS', 31536000 if SECURE_DEFAULTS else 0)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool('DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS', SECURE_DEFAULTS)
+SECURE_HSTS_PRELOAD = env_bool('DJANGO_SECURE_HSTS_PRELOAD', SECURE_DEFAULTS)
+
+# Email (SMTP)
+EMAIL_BACKEND = os.getenv("DJANGO_EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend").strip()
+EMAIL_HOST = os.getenv("DJANGO_EMAIL_HOST", "").strip()
+EMAIL_PORT = int(os.getenv("DJANGO_EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.getenv("DJANGO_EMAIL_HOST_USER", "").strip()
+EMAIL_HOST_PASSWORD = os.getenv("DJANGO_EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = env_bool("DJANGO_EMAIL_USE_TLS", True)
+EMAIL_USE_SSL = env_bool("DJANGO_EMAIL_USE_SSL", False)
+DEFAULT_FROM_EMAIL = os.getenv("DJANGO_DEFAULT_FROM_EMAIL", EMAIL_HOST_USER or "no-reply@delta.local").strip()
+SERVER_EMAIL = os.getenv("DJANGO_SERVER_EMAIL", DEFAULT_FROM_EMAIL).strip()
+
+# In local debug without SMTP config, print emails to console to avoid silent confusion.
+if DEBUG and EMAIL_BACKEND == "django.core.mail.backends.smtp.EmailBackend" and not EMAIL_HOST:
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 LOGGING = {
     'version': 1,
@@ -224,3 +308,20 @@ LOGGING = {
         },
     },
 }
+
+# SMACC webhook controls (defense in depth for public endpoints)
+SMACC_WEBHOOK_IP_ALLOWLIST = [
+    ip.strip()
+    for ip in os.getenv("SMACC_WEBHOOK_IP_ALLOWLIST", "").split(",")
+    if ip.strip()
+]
+SMACC_WEBHOOK_RATE_LIMIT_PER_MINUTE = int(os.getenv("SMACC_WEBHOOK_RATE_LIMIT_PER_MINUTE", "120"))
+SMACC_WEBHOOK_SIGNATURE_HEADER = os.getenv("SMACC_WEBHOOK_SIGNATURE_HEADER", "X-Smacc-Signature")
+
+# Real AI assistant integration (used by /inventory/assistant/ and /inventory/chat/)
+AI_ASSISTANT_ENABLED = env_bool("AI_ASSISTANT_ENABLED", True)
+AI_ASSISTANT_PROVIDER = (os.getenv("AI_ASSISTANT_PROVIDER", "openai") or "openai").strip().lower()
+AI_ASSISTANT_MODEL = (os.getenv("AI_ASSISTANT_MODEL", "gpt-4.1-mini") or "gpt-4.1-mini").strip()
+AI_ASSISTANT_API_KEY = (os.getenv("AI_ASSISTANT_API_KEY", "") or "").strip()
+AI_ASSISTANT_BASE_URL = (os.getenv("AI_ASSISTANT_BASE_URL", "https://api.openai.com/v1") or "https://api.openai.com/v1").strip()
+AI_ASSISTANT_TIMEOUT_SECONDS = int(os.getenv("AI_ASSISTANT_TIMEOUT_SECONDS", "20"))
